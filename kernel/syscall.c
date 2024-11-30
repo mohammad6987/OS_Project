@@ -6,26 +6,25 @@
 #include "proc.h"
 #include "syscall.h"
 #include "defs.h"
+#include "limits.h"
 
 // Fetch the uint64 at addr from the current process.
-int
-fetchaddr(uint64 addr, uint64 *ip)
+int fetchaddr(uint64 addr, uint64 *ip)
 {
   struct proc *p = myproc();
-  if(addr >= p->sz || addr+sizeof(uint64) > p->sz) // both tests needed, in case of overflow
+  if (addr >= p->sz || addr + sizeof(uint64) > p->sz) // both tests needed, in case of overflow
     return -1;
-  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
+  if (copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
     return -1;
   return 0;
 }
 
 // Fetch the nul-terminated string at addr from the current process.
 // Returns length of string, not including nul, or -1 for error.
-int
-fetchstr(uint64 addr, char *buf, int max)
+int fetchstr(uint64 addr, char *buf, int max)
 {
   struct proc *p = myproc();
-  if(copyinstr(p->pagetable, buf, addr, max) < 0)
+  if (copyinstr(p->pagetable, buf, addr, max) < 0)
     return -1;
   return strlen(buf);
 }
@@ -34,7 +33,8 @@ static uint64
 argraw(int n)
 {
   struct proc *p = myproc();
-  switch (n) {
+  switch (n)
+  {
   case 0:
     return p->trapframe->a0;
   case 1:
@@ -53,8 +53,7 @@ argraw(int n)
 }
 
 // Fetch the nth 32-bit system call argument.
-void
-argint(int n, int *ip)
+void argint(int n, int *ip)
 {
   *ip = argraw(n);
 }
@@ -62,8 +61,7 @@ argint(int n, int *ip)
 // Retrieve an argument as a pointer.
 // Doesn't check for legality, since
 // copyin/copyout will do that.
-void
-argaddr(int n, uint64 *ip)
+void argaddr(int n, uint64 *ip)
 {
   *ip = argraw(n);
 }
@@ -71,8 +69,7 @@ argaddr(int n, uint64 *ip)
 // Fetch the nth word-sized system call argument as a null-terminated string.
 // Copies into buf, at most max.
 // Returns string length if OK (including nul), -1 if error.
-int
-argstr(int n, char *buf, int max)
+int argstr(int n, char *buf, int max)
 {
   uint64 addr;
   argaddr(n, &addr);
@@ -101,47 +98,109 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
+extern struct proc proc[NPROC]; // list of processes from proc.c
+extern uint64 getFreeMem(void); // function to get free memory from kalloc.c
+extern uint64 sys_nice(void);
+
+uint64 sys_sysinfo(void)
+{
+  struct sysinfo_data *data = (struct sysinfo_data *)myproc()->trapframe->a0; // from user space , firt argument of
+  // sysinfo function is stored in a0
+  struct sysinfo_data sysinfo; // from kernel space to aviod addressing issues
+
+  int d = 0;
+  struct proc *p = myproc();
+  for (int i = 0; i < NPROC; i++)
+  {
+    if (proc[i].state != UNUSED && proc[i].state != USED)
+      d++;
+  }
+
+  sysinfo.running_processes = d;
+  sysinfo.free_memory = getFreeMem();
+
+  return copyout(p->pagetable, (uint64)data, (char *)&sysinfo, sizeof(sysinfo)); // it will return something >0
+  // if user address isn't valid
+}
+
+uint64 sys_next_process(void)
+{
+  int before_pid = argraw(0);
+  struct process_data *user_proc_data = (struct process_data *)argraw(1);
+  struct process_data dummy_proc_data;
+
+  int index = 64;
+  int last_pid = INT_MAX;
+  for (int i = NPROC - 1; i > -1; i--)
+  {
+    if (proc[i].state != UNUSED && proc[i].state != USED)
+    {
+      if (proc[i].pid > before_pid && proc[i].pid < last_pid)
+      {
+        last_pid = proc[i].pid;
+        index = i;
+      }
+    }
+  }
+  if (index == 64)
+    return 0;
+  dummy_proc_data.pid = proc[index].pid;
+  dummy_proc_data.parent_pid = proc[index].parent ? proc[index].parent->pid : -1;
+  dummy_proc_data.heap_size = proc[index].sz;
+  dummy_proc_data.state = proc[index].state;
+  safestrcpy(dummy_proc_data.name, proc[index].name, sizeof(dummy_proc_data.name));
+  dummy_proc_data.niceness = proc[index].niceness;
+  if (copyout(myproc()->pagetable, (uint64)user_proc_data, (char *)&dummy_proc_data, sizeof(dummy_proc_data)) < 0)
+    return -1;
+
+  return 1;
+}
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64 (*syscalls[])(void) = {
-[SYS_fork]    sys_fork,
-[SYS_exit]    sys_exit,
-[SYS_wait]    sys_wait,
-[SYS_pipe]    sys_pipe,
-[SYS_read]    sys_read,
-[SYS_kill]    sys_kill,
-[SYS_exec]    sys_exec,
-[SYS_fstat]   sys_fstat,
-[SYS_chdir]   sys_chdir,
-[SYS_dup]     sys_dup,
-[SYS_getpid]  sys_getpid,
-[SYS_sbrk]    sys_sbrk,
-[SYS_sleep]   sys_sleep,
-[SYS_uptime]  sys_uptime,
-[SYS_open]    sys_open,
-[SYS_write]   sys_write,
-[SYS_mknod]   sys_mknod,
-[SYS_unlink]  sys_unlink,
-[SYS_link]    sys_link,
-[SYS_mkdir]   sys_mkdir,
-[SYS_close]   sys_close,
+    [SYS_fork] sys_fork,
+    [SYS_exit] sys_exit,
+    [SYS_wait] sys_wait,
+    [SYS_pipe] sys_pipe,
+    [SYS_read] sys_read,
+    [SYS_kill] sys_kill,
+    [SYS_exec] sys_exec,
+    [SYS_fstat] sys_fstat,
+    [SYS_chdir] sys_chdir,
+    [SYS_dup] sys_dup,
+    [SYS_getpid] sys_getpid,
+    [SYS_sbrk] sys_sbrk,
+    [SYS_sleep] sys_sleep,
+    [SYS_uptime] sys_uptime,
+    [SYS_open] sys_open,
+    [SYS_write] sys_write,
+    [SYS_mknod] sys_mknod,
+    [SYS_unlink] sys_unlink,
+    [SYS_link] sys_link,
+    [SYS_mkdir] sys_mkdir,
+    [SYS_close] sys_close,
+    [SYS_sysinfo] sys_sysinfo,
+    [SYS_next_process] sys_next_process,
+    [SYS_nice] sys_nice,
 };
 
-void
-syscall(void)
+void syscall(void)
 {
   int num;
   struct proc *p = myproc();
 
   num = p->trapframe->a7;
-  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+  if (num > 0 && num < NELEM(syscalls) && syscalls[num])
+  {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
     p->trapframe->a0 = syscalls[num]();
-  } else {
+  }
+  else
+  {
     printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
+           p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
 }

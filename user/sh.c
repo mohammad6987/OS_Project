@@ -134,7 +134,12 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf)
 {
-  write(2, "$ ", 2);
+  const char *red_color = "\033[1;31m";
+  const char *reset_color = "\033[1;35m";
+  const char *starter_comm = "XV6@Mohammad $ ";
+  write(2, red_color, strlen(red_color));
+  write(2,starter_comm , strlen(starter_comm));
+  write(2, reset_color, strlen(reset_color));
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if(buf[0] == 0) // EOF
