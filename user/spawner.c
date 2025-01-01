@@ -15,6 +15,7 @@ int main(void)
 			{
 				char *args[] = {"sleep", "100000000", 0};
 				nice(5);
+				sbrk(-1);
 				exec("sleep", args);
 			}
 		}

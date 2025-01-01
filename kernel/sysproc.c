@@ -99,7 +99,7 @@ sys_nice(void)
 {
   struct proc *p = myproc();
   int increment = (int)p->trapframe->a0;
-  if(increment < 0 )
+  if (increment < 0)
     return -1;
   int finalNice = p->niceness + increment;
   if (finalNice > 19 || finalNice < -20)
@@ -107,5 +107,16 @@ sys_nice(void)
 
   p->niceness = finalNice;
 
+  return 0;
+}
+
+uint64
+sys_deadline(void)
+{
+  struct proc *p = myproc();
+  uint newDealine =(int)p->trapframe->a0;
+  if(newDealine <= ticks)
+    return -1;
+  p->ticks = newDealine;  
   return 0;
 }

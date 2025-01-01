@@ -49,8 +49,34 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
+  if (r_scause() == 13 || r_scause() == 15)
+  {
+    uint64 va = r_stval();
+    if (va < p->top_of_stack || va > p->sz)
+    {
+      setkilled(p);
+    }
+    else
+    {
+      char *pa = kalloc();
+      if (pa == 0)
+      {
+        printf("usertrap: out of memory\n");
+      }
+      else
+      {
+
+        uint64 pageAddress = PGROUNDDOWN(va);
+        if (mappages(p->pagetable, pageAddress, PGSIZE, (uint64)pa, PTE_W | PTE_R | PTE_U))
+        {
+
+          printf("usertrap: failed to map pages\n");
+          setkilled(p);
+        }
+      }
+    }
+  }
+  else if(r_scause() == 8){
     // system call
 
     if(killed(p))

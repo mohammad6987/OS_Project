@@ -198,6 +198,7 @@ UPROGS=\
 	$U/_tree\
 	$U/_spawner\
 	$U/_nice\
+	$U/_lazytest\
 
 ifeq ($(LAB),syscall)
 UPROGS += \

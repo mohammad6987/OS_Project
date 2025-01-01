@@ -7,29 +7,34 @@
 #include "defs.h"
 #include <stddef.h>
 
-#define NQUEUE 3 
+#define NQUEUE 3
 #define QSIZE 64
 
-struct queue {
-    struct proc *procs[QSIZE];
-    int front, rear, size;
+struct queue
+{
+  struct proc *procs[QSIZE];
+  int front, rear, size;
 };
 
 struct queue mlfqs[NQUEUE];
 
-void enqueue(struct queue *q, struct proc *p) {
-    if (q->size == QSIZE) return; // Queue is full
-    q->procs[q->rear] = p;
-    q->rear = (q->rear + 1) % QSIZE;
-    q->size++;
+void enqueue(struct queue *q, struct proc *p)
+{
+  if (q->size == QSIZE)
+    return; 
+  q->procs[q->rear] = p;
+  q->rear = (q->rear + 1) % QSIZE;
+  q->size++;
 }
 
-struct proc *dequeue(struct queue *q) {
-    if (q->size == 0) return 0; // Queue is empty
-    struct proc *p = q->procs[q->front];
-    q->front = (q->front + 1) % QSIZE;
-    q->size--;
-    return p;
+struct proc *dequeue(struct queue *q)
+{
+  if (q->size == 0)
+    return 0; 
+  struct proc *p = q->procs[q->front];
+  q->front = (q->front + 1) % QSIZE;
+  q->size--;
+  return p;
 }
 
 struct cpu cpus[NCPU];
@@ -151,12 +156,12 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+  p->ticks = 100+ ticks;
   p->state = USED;
   p->niceness = 0;
-  p->quantum_used = 0;
-  p->queue_level = 0; 
+  p->queue_level = 0;
   enqueue(&mlfqs[0], p);
-  // Allocate a trapframe page.
+
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0)
   {
     freeproc(p);
@@ -297,10 +302,11 @@ int growproc(int n)
   sz = p->sz;
   if (n > 0)
   {
-    if ((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0)
+    /*if ((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0)
     {
       return -1;
-    }
+    }*/
+   sz += n;
   }
   else if (n < 0)
   {
@@ -332,6 +338,7 @@ int fork(void)
     return -1;
   }
   np->sz = p->sz;
+  np->top_of_stack = p->top_of_stack;
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -489,61 +496,122 @@ int wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
-void scheduler(void)
-{
+void scheduler(void) {
   struct proc *p;
   struct cpu *c = mycpu();
-  c->proc = 0;
 
-  for (;;)
-  {
+  c->proc = 0;
+  for(;;){
+    // The most recent process to run may have had interrupts
+    // turned off; enable them to avoid a deadlock if all
+    // processes are waiting.
     intr_on();
 
-    int index = -1;
-
-    // Find the runnable process with the smallest niceness
-    for (p = proc; p < &proc[NPROC]; p++)
-    {
+    int found = 0;
+    for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if (p->state == RUNNABLE)
-      {
-        p->wait_time++;
-        if (index == -1 || p->niceness < proc[index].niceness)
-        {
-          if (index != -1)
-            release(&proc[index].lock);
-          index = p - proc;
-        }
-        else
-        {
-          release(&p->lock); // Release lock if not selected
-        }
-      }
-      else
-      {
-        release(&p->lock); // Release lock if not RUNNABLE
-      }
-    }
+      if(p->state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
 
-    if (index != -1)
-    {
-
-      p = &proc[index];
-      p->state = RUNNING;
-      c->proc = p;
-      swtch(&c->context, &p->context);
-      c->proc = 0;
-      p->wait_time = 0;
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+        found = 1;
+      }
       release(&p->lock);
     }
-    else
-    {
-      // No runnable processes, wait for an interrupt
+    if(found == 0) {
+      // nothing to run; stop running on this core until an interrupt.
       intr_on();
       asm volatile("wfi");
     }
   }
+    /*struct proc *p;
+    struct cpu *c = mycpu();
+    c->proc = 0;
+    int q0Size = mlfqs[0].size , q1Size = mlfqs[1].size;
+    for (;;) {
+      intr_on(); 
+        x:
+        q0Size = mlfqs[0].size , q1Size = mlfqs[1].size;
+        
+        int found = 0;
+        int i = 0;
+        for (; i < NQUEUE; i++) {
+            q0Size = mlfqs[0].size;
+            q1Size = mlfqs[1].size;
+            if (mlfqs[i].size > 0) {
+                p = mlfqs[i].procs[mlfqs[i].front];
+                acquire(&p->lock);
+                dequeue(&mlfqs[i]); 
+                
+                if (p->state == RUNNABLE) {
+                    found = 1;
+                    p->state = RUNNING;
+                    c->proc = p;
+                    if (i == 0){
+                      swtch(&c->context, &p->context);
+                    }
+                    else if (i == 1) {
+                          if (q0Size != mlfqs[0].size)
+                           { 
+                            c->proc = 0;  
+                            goto x;}
+                          swtch(&c->context, &p->context);
+                          if (q0Size != mlfqs[0].size)
+                            {c->proc = 0;  
+                              goto x;}
+                          if (p->state == RUNNABLE) {
+                              swtch(&c->context, &p->context);
+                          }
+                          
+                    } else {
+                        while (p->state == RUNNABLE) {
+                          if (q0Size != mlfqs[0].size || q1Size != mlfqs[1].size)
+                           {
+                            c->proc = 0;  
+                            goto x;}
+                          swtch(&c->context, &p->context);
+                        }
+                    }
+
+                    c->proc = 0; 
+      
+                    switch (p->state) {
+                    case RUNNABLE:
+                        if (i == 0) {
+                            enqueue(&mlfqs[1], p); 
+                        } else if (i == 1) {
+                            enqueue(&mlfqs[2], p); 
+                        } 
+                        break;
+                    case SLEEPING:
+                        enqueue(&mlfqs[0], p); 
+                        i = -1;
+                        break;
+                    default:   
+                        break;
+                    }
+                } else {
+                    enqueue(&mlfqs[i], p); 
+                }
+                release(&p->lock);
+                break; 
+            }
+        }
+
+        if(!found)
+          asm volatile("wfi");
+    }*/
 }
+
+
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores

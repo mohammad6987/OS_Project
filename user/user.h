@@ -28,6 +28,7 @@ int uptime(void);
 int sysinfo(struct sysinfo_data *);
 int next_process(int before_pid, struct process_data *proc);
 int nice(int inc);
+int deadline(uint newDeadline);
 // ulib.c
 int stat(const char *, struct stat *);
 char *strcpy(char *, const char *);
