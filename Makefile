@@ -274,17 +274,22 @@ ifeq ($(LAB),util)
 	UEXTRA += user/xargstest.sh
 endif
 
-
-fs.img: README $(UEXTRA) $(UPROGS)
+fs.img: 
 	echo "Creating new ext2 fs.img...\n"; 
 	rm -f fs.img; 
 	truncate -s 2M fs.img; 
-	mkfs.ext2 -b 1024 fs.img $(UPROGS); 
-	sudo mount -o loop fs.img /mnt
+	mkfs.ext2 -b 1024 fs.img;
+	dumpe2fs fs.img;
+	sudo mount -o loop fs.img /mnt;
 	for prog in $(UPROGS); do \
-		sudo cp $$prog /mnt; \
-	done
+		prog_name=$$(echo $$prog | tr --delete _); \
+		#echo $$prog; \
+        #echo $$prog_name; \
+		#gcc -o $$prog_name "$$prog_name.c"; \
+        sudo cp "$$prog_name.c" /mnt; \
+	done	
 	sudo umount /mnt
+	
 
 -include kernel/*.d user/*.d
 
