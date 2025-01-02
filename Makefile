@@ -275,8 +275,11 @@ ifeq ($(LAB),util)
 endif
 
 
-fs.img: mkfs/mkfs README $(UEXTRA) $(UPROGS)
-	mkfs/mkfs fs.img README $(UEXTRA) $(UPROGS)
+fs.img: README $(UEXTRA) $(UPROGS)
+	echo "Creating new ext2 fs.img...\n"; 
+	rm -f fs.img; 
+	truncate -s 2M fs.img; 
+	mkfs.ext2 -b 1024 fs.img $(UPROGS); 
 
 -include kernel/*.d user/*.d
 

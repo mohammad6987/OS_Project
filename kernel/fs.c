@@ -43,6 +43,7 @@ fsinit(int dev) {
   readsb(dev, &sb);
   if(sb.magic != FSMAGIC)
     panic("invalid file system");
+  printf("file system fsmagic : %x\n" , sb.magic);  
   initlog(dev, &sb);
 }
 
