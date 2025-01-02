@@ -280,6 +280,11 @@ fs.img: README $(UEXTRA) $(UPROGS)
 	rm -f fs.img; 
 	truncate -s 2M fs.img; 
 	mkfs.ext2 -b 1024 fs.img $(UPROGS); 
+	sudo mount -o loop fs.img /mnt
+	for prog in $(UPROGS); do \
+		sudo cp $$prog /mnt; \
+	done
+	sudo umount /mnt
 
 -include kernel/*.d user/*.d
 
