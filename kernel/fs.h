@@ -22,7 +22,7 @@ struct superblock {
   uint bmapstart;    // Block number of first free map block
 };
 
-#define FSMAGIC 0x10203040
+#define FSMAGIC 0xEF53
 
 #define NDIRECT 12
 #define NINDIRECT (BSIZE / sizeof(uint))
