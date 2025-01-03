@@ -198,7 +198,6 @@ UPROGS=\
 	$U/_tree\
 	$U/_spawner\
 	$U/_nice\
-	$U/_lazytest\
 
 ifeq ($(LAB),syscall)
 UPROGS += \
@@ -274,21 +273,20 @@ ifeq ($(LAB),util)
 	UEXTRA += user/xargstest.sh
 endif
 
-fs.img: 
-	echo "Creating new ext2 fs.img...\n"; 
-	rm -f fs.img; 
-	truncate -s 2M fs.img; 
-	mkfs.ext2 -b 1024 fs.img;
-	dumpe2fs fs.img;
-	sudo mount -o loop fs.img /mnt;
+MOUNT_POINT := /mnt
+
+fs.img: $(UPROGS)
+
+	@if [ -f fs.img ]; then rm fs.img; fi
+	truncate -s 2M fs.img
+	mkfs.ext2 -b 1024 fs.img
+	sudo mount -o loop fs.img $(MOUNT_POINT)
+	@echo "Copying user programs into filesystem..."
 	for prog in $(UPROGS); do \
-		prog_name=$$(echo $$prog | tr --delete _); \
-		#echo $$prog; \
-        #echo $$prog_name; \
-		#gcc -o $$prog_name "$$prog_name.c"; \
-        sudo cp "$$prog_name.c" /mnt; \
-	done	
-	sudo umount /mnt
+		sudo cp "$$prog" $(MOUNT_POINT)/; \
+	done
+	sudo umount $(MOUNT_POINT)
+	dumpe2fs fs.img
 	
 
 -include kernel/*.d user/*.d
