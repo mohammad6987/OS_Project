@@ -283,7 +283,8 @@ fs.img: $(UPROGS)
 	sudo mount -o loop fs.img $(MOUNT_POINT)
 	@echo "Copying user programs into filesystem..."
 	for prog in $(UPROGS); do \
-		sudo cp "$$prog" $(MOUNT_POINT)/; \
+		new_prog=$$(echo "$$prog" | tr -d '_'); 
+		sudo cp "$$new_prog" $(MOUNT_POINT); \
 	done
 	sudo umount $(MOUNT_POINT)
 	dumpe2fs fs.img
