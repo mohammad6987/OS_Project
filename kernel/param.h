@@ -11,8 +11,8 @@
 #define ROOTDEV       1  // device number of file system root disk
 #define MAXARG       32  // max exec arguments
 #define MAXOPBLOCKS  10  // max # of blocks any FS op writes
-#define LOGSIZE      (MAXOPBLOCKS*3)  // max data blocks in on-disk log
-#define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
+#define LOGSIZE      128  // max data blocks in on-disk log
+#define NBUF         128  // size of disk block cache
 
 #ifdef LAB_FS
 #define FSSIZE       200000  // size of file system in blocks
