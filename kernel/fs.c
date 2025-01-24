@@ -75,6 +75,14 @@ void fsinit(int dev)
 
   readbgd(dev , &bgd);
 
+  printf("Block Group Descriptor contents:\n");
+  printf("Block bitmap block: %u\n", bgd.bg_block_bitmap);
+  printf("Inode bitmap block: %u\n", bgd.bg_inode_bitmap);
+  printf("Inode table block: %u\n", bgd.bg_inode_table);
+  printf("Free blocks count: %u\n", bgd.bg_free_blocks_count);
+  printf("Free inodes count: %u\n", bgd.bg_free_inodes_count);
+  printf("Used directories count: %u\n", bgd.bg_used_dirs_count);
+
   initlog(dev, &sb);
 }
 
@@ -97,7 +105,7 @@ bzero(int dev, int bno)
 static uint
 balloc(uint dev)
 {
-  int b, bi, m;
+  int bi, m;
   struct buf *bp;
 
   bp = 0;
@@ -241,7 +249,7 @@ ialloc(uint dev, short type)
 
   for (inum = 1; inum < sb.ninodes; inum++)
   {
-    bp = bread(dev, IBLOCK(inum, sb));
+    bp = bread(dev, IBLOCK(inum, bgd));
     dip = (struct dinode *)bp->data + inum % IPB;
     if (dip->type == 0)
     { // a free inode
@@ -266,7 +274,7 @@ void iupdate(struct inode *ip)
   struct buf *bp;
   struct dinode *dip;
 
-  bp = bread(ip->dev, IBLOCK(ip->inum, sb));
+  bp = bread(ip->dev, IBLOCK(ip->inum, bgd));
   dip = (struct dinode *)bp->data + ip->inum % IPB;
   dip->type = ip->type;
   dip->major = ip->major;
@@ -341,7 +349,7 @@ void ilock(struct inode *ip)
 
   if (ip->valid == 0)
   {
-    bp = bread(ip->dev, IBLOCK(ip->inum, sb));
+    bp = bread(ip->dev, IBLOCK(ip->inum, bgd));
     dip = (struct dinode *)bp->data + ip->inum % IPB;
     ip->type = dip->type;
     ip->major = dip->major;

@@ -4,7 +4,6 @@
 #define ROOTINO 1  // root i-number
 #define BSIZE 1024 // block size
 
-
 // Disk layout:
 // [ boot block | super block | log | inode blocks |
 //                                          free bit map | data blocks]
@@ -25,7 +24,7 @@
   uint reserved_ext[241];
 };*/
 
-struct super_block
+struct superblock
 {
   uint ninodes;                  /* Inodes count */
   uint size;                     /* Blocks count */
@@ -104,7 +103,7 @@ struct ext2_group_desc
 #define MAXFILE (NDIRECT + NINDIRECT)
 
 // On-disk inode structure
-struct dinode
+/*struct dinode
 {
   short type;              // File type
   short major;             // Major device number (T_DEVICE only)
@@ -112,20 +111,50 @@ struct dinode
   short nlink;             // Number of links to inode in file system
   uint size;               // Size of file (bytes)
   uint addrs[NDIRECT + 1]; // Data block addresses
+};*/
+
+struct dinode
+{
+  ushort type;       // File mode (type and permissions)
+  ushort i_uid;      // Owner UID
+  uint size;         // Size in bytes
+  uint i_atime;      // Access time
+  uint i_ctime;      // Creation time
+  uint i_mtime;      // Modification time
+  uint i_dtime;      // Deletion time
+  ushort i_gid;      // Group ID
+  ushort nlink;      // Number of hard links
+  uint i_blocks;     // Number of 512-byte blocks allocated
+  uint i_flags;      // File flags
+  uint addrs[15];    // Block pointers (12 direct, 1 single, 1 double, 1 triple)
+  uint i_generation; // File version for NFS
+  uint i_file_acl;   // File Access Control List
+  uint i_dir_acl;    // Directory Access Control List
+  uint i_faddr;      // Fragment address
+  uchar i_osd1[12];  // OS-dependent fields (first part)
+  uchar i_osd2[12];  // OS-dependent fields (second part)
+  union
+  {
+    uint reserved[3]; // Reserved for future use
+    struct
+    {
+      ushort major; // Major device number
+      ushort minor; // Minor device number
+    };
+  };
 };
 
 // Inodes per block.
 #define IPB (BSIZE / sizeof(struct dinode))
 
 // Block containing inode i
-#define IBLOCK(i, sb) ((i) / IPB + sb.inodestart)
+#define IBLOCK(i, bgd) ((i) / IPB + bgd.bg_inode_table)
 
 // Bitmap bits per block
 #define BPB (BSIZE * 8)
 
 // Block of free map containing bit for block b
 #define BBLOCK(b, bgd) ((b) / BPB + (bgd).bg_block_bitmap)
-
 
 // Directory is a file containing a sequence of dirent structures.
 #define DIRSIZ 14
