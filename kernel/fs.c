@@ -26,31 +26,34 @@
 // only one device
 struct superblock sb;
 
+struct ext2_group_desc bgd;
+
 // Read the super block.
 static void
 readsb(int dev, struct superblock *sb)
 {
   struct buf *bp;
-  uint16 *data_ptr;
-  uint16 search_value = 0xEF53;
-  int i;
-
   bp = bread(dev, 1);
   memmove(sb, bp->data, 1024);
 
-  data_ptr = (uint16 *)sb;
-
-  for (i = 0; i < 512; i++)
-  {
-    printf("%d : %x\n",i / 2,data_ptr[i]);
-    if (data_ptr[i] == search_value)
-    {
-
-      printf("Found 0xEF53 at location %d , 0x%x (byte offset 0x%x)\n", i, i, i / 2);
-    }
-  }
-
   brelse(bp);
+}
+
+void readbgd(uint dev, struct ext2_group_desc *bgd) {
+    struct buf *bp;
+    uint block = 2; // Block group descriptor starts at block 2 in EXT2
+    bp = bread(dev, block);
+    memmove(bgd, bp->data, sizeof(struct ext2_group_desc));
+    brelse(bp);
+}
+
+void writebgd(uint dev, struct ext2_group_desc *bgd) {
+    struct buf *bp;
+    uint block = 2; // Block group descriptor starts at block 2 for 1024-byte block size
+    bp = bread(dev, block);
+    memmove(bp->data, bgd, sizeof(struct ext2_group_desc));
+    //log_write(bp);
+    brelse(bp);
 }
 
 // Init fs
@@ -58,20 +61,19 @@ readsb(int dev, struct superblock *sb)
 void fsinit(int dev)
 {
   readsb(dev, &sb); // Read the superblock from the device
-  uint16 *data_ptr;
-  data_ptr = (uint16 *)&sb;
   printf("Superblock contents:\n");
   printf("Magic: 0x%x\n", sb.magic);
   printf("File system size (blocks): %u\n", sb.size);
   printf("Number of data blocks: %d\n", sb.nblocks);
   printf("Number of inodes: %d\n", sb.ninodes);
-  printf("Number of log blocks: %d\n", sb.nlog);
-  printf("Log start block: %u\n", sb.logstart);
-  printf("Inode start block: %u\n", sb.inodestart);
-  printf("Bitmap start block: %u\n", sb.bmapstart);
 
-  if (data_ptr[0x1c] != FSMAGIC)
+  printf("Inode start block: %u\n", sb.inodestart);
+
+  if (sb.magic != FSMAGIC)
     panic("Invalid file system");
+
+
+  readbgd(dev , &bgd);
 
   initlog(dev, &sb);
 }
@@ -99,23 +101,24 @@ balloc(uint dev)
   struct buf *bp;
 
   bp = 0;
-  for (b = 0; b < sb.size; b += BPB)
-  {
-    bp = bread(dev, BBLOCK(b, sb));
-    for (bi = 0; bi < BPB && b + bi < sb.size; bi++)
-    {
-      m = 1 << (bi % 8);
-      if ((bp->data[bi / 8] & m) == 0)
-      {                        // Is block free?
-        bp->data[bi / 8] |= m; // Mark block in use.
-        log_write(bp);
-        brelse(bp);
-        bzero(dev, b + bi);
-        return b + bi;
-      }
+  for (bi = 0; bi < BPB; bi++) {
+        m = 1 << (bi % 8);
+        if ((bp->data[bi / 8] & m) == 0) { // Is block free?
+            bp->data[bi / 8] |= m;        // Mark block in use
+            log_write(bp);                // Log the change
+            brelse(bp);
+
+            // Update the block group descriptor's free block count
+            bgd.bg_free_blocks_count--;
+            writebgd(dev, &bgd);          // Save the updated block group descriptor
+
+            // Calculate the allocated block's number
+            uint block = bgd.bg_block_bitmap + bi;
+            bzero(dev, block);            // Zero out the allocated block
+            return block;
+        }
     }
-    brelse(bp);
-  }
+
   printf("balloc: out of blocks\n");
   return 0;
 }
@@ -127,7 +130,7 @@ bfree(int dev, uint b)
   struct buf *bp;
   int bi, m;
 
-  bp = bread(dev, BBLOCK(b, sb));
+  bp = bread(dev, BBLOCK(b, bgd));
   bi = b % BPB;
   m = 1 << (bi % 8);
   if ((bp->data[bi / 8] & m) == 0)
