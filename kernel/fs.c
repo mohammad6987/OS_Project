@@ -39,21 +39,23 @@ readsb(int dev, struct superblock *sb)
   brelse(bp);
 }
 
-void readbgd(uint dev, struct ext2_group_desc *bgd) {
-    struct buf *bp;
-    uint block = 2; // Block group descriptor starts at block 2 in EXT2
-    bp = bread(dev, block);
-    memmove(bgd, bp->data, sizeof(struct ext2_group_desc));
-    brelse(bp);
+void readbgd(uint dev, struct ext2_group_desc *bgd)
+{
+  struct buf *bp;
+  uint block = 2; // Block group descriptor starts at block 2 in EXT2
+  bp = bread(dev, block);
+  memmove(bgd, bp->data, sizeof(struct ext2_group_desc));
+  brelse(bp);
 }
 
-void writebgd(uint dev, struct ext2_group_desc *bgd) {
-    struct buf *bp;
-    uint block = 2; // Block group descriptor starts at block 2 for 1024-byte block size
-    bp = bread(dev, block);
-    memmove(bp->data, bgd, sizeof(struct ext2_group_desc));
-    //log_write(bp);
-    brelse(bp);
+void writebgd(uint dev, struct ext2_group_desc *bgd)
+{
+  struct buf *bp;
+  uint block = 2; // Block group descriptor starts at block 2 for 1024-byte block size
+  bp = bread(dev, block);
+  memmove(bp->data, bgd, sizeof(struct ext2_group_desc));
+  // log_write(bp);
+  brelse(bp);
 }
 
 // Init fs
@@ -72,8 +74,7 @@ void fsinit(int dev)
   if (sb.magic != FSMAGIC)
     panic("Invalid file system");
 
-
-  readbgd(dev , &bgd);
+  readbgd(dev, &bgd);
 
   printf("Block Group Descriptor contents:\n");
   printf("Block bitmap block: %u\n", bgd.bg_block_bitmap);
@@ -109,23 +110,25 @@ balloc(uint dev)
   struct buf *bp;
 
   bp = 0;
-  for (bi = 0; bi < BPB; bi++) {
-        m = 1 << (bi % 8);
-        if ((bp->data[bi / 8] & m) == 0) { // Is block free?
-            bp->data[bi / 8] |= m;        // Mark block in use
-            log_write(bp);                // Log the change
-            brelse(bp);
+  for (bi = 0; bi < BPB; bi++)
+  {
+    m = 1 << (bi % 8);
+    if ((bp->data[bi / 8] & m) == 0)
+    {                        // Is block free?
+      bp->data[bi / 8] |= m; // Mark block in use
+      log_write(bp);         // Log the change
+      brelse(bp);
 
-            // Update the block group descriptor's free block count
-            bgd.bg_free_blocks_count--;
-            writebgd(dev, &bgd);          // Save the updated block group descriptor
+      // Update the block group descriptor's free block count
+      bgd.bg_free_blocks_count--;
+      writebgd(dev, &bgd); // Save the updated block group descriptor
 
-            // Calculate the allocated block's number
-            uint block = bgd.bg_block_bitmap + bi;
-            bzero(dev, block);            // Zero out the allocated block
-            return block;
-        }
+      // Calculate the allocated block's number
+      uint block = bgd.bg_block_bitmap + bi;
+      bzero(dev, block); // Zero out the allocated block
+      return block;
     }
+  }
 
   printf("balloc: out of blocks\n");
   return 0;
@@ -232,6 +235,8 @@ void iinit()
   {
     initsleeplock(&itable.inode[i].lock, "inode");
   }
+
+
 }
 
 static struct inode *iget(uint dev, uint inum);
@@ -246,7 +251,7 @@ ialloc(uint dev, short type)
   int inum;
   struct buf *bp;
   struct dinode *dip;
-
+  
   for (inum = 1; inum < sb.ninodes; inum++)
   {
     bp = bread(dev, IBLOCK(inum, bgd));
@@ -281,6 +286,7 @@ void iupdate(struct inode *ip)
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
   dip->size = ip->size;
+  printf("inside iupdate , ninide type = %x , major = %x , size = %d", ip->type,ip->major,ip->size);
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
   log_write(bp);
   brelse(bp);
@@ -335,6 +341,8 @@ idup(struct inode *ip)
   return ip;
 }
 
+
+
 // Lock the given inode.
 // Reads the inode from disk if necessary.
 void ilock(struct inode *ip)
@@ -351,7 +359,11 @@ void ilock(struct inode *ip)
   {
     bp = bread(ip->dev, IBLOCK(ip->inum, bgd));
     dip = (struct dinode *)bp->data + ip->inum % IPB;
-    ip->type = dip->type;
+
+     if (S_ISDIR(dip->type) || dip->type == T_DIR)
+      ip->type = T_DIR;
+    else
+      ip->type = T_FILE;
     ip->major = dip->major;
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
