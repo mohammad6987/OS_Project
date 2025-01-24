@@ -316,6 +316,23 @@ sys_open(void)
 
   begin_op();
 
+  if (strcmp(path, "console") == 0) {
+   
+    if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+      if(f)
+        fileclose(f);
+      end_op();
+      return -1;
+    }
+    f->type = FD_DEVICE;
+    f->major = CONSOLE;
+    f->ip = 0; 
+    f->readable = 1;
+    f->writable = 1;
+    end_op();
+    return fd;
+  }
+
   if(omode & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
@@ -389,7 +406,7 @@ sys_mkdir(void)
 uint64
 sys_mknod(void)
 {
-  struct inode *ip;
+  /*struct inode *ip;
   char path[MAXPATH];
   int major, minor;
 
@@ -402,7 +419,7 @@ sys_mknod(void)
     return -1;
   }
   iunlockput(ip);
-  end_op();
+  end_op();*/
   return 0;
 }
 
