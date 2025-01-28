@@ -287,7 +287,7 @@ fs.img: $(UPROGS)
 		sudo cp "$$prog" $(MOUNT_POINT)/$$new_prog; \
 	done
 	sudo umount $(MOUNT_POINT)
-	dumpe2fs fs.img
+# dumpe2fs fs.img
 	
 
 -include kernel/*.d user/*.d

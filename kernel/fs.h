@@ -1,28 +1,49 @@
 // On-disk file system format.
 // Both the kernel and user programs use this header file.
 
-#define ROOTINO 1  // root i-number
-#define BSIZE 1024 // block size
-
 // Disk layout:
 // [ boot block | super block | log | inode blocks |
 //                                          free bit map | data blocks]
 //
 // mkfs computes the super block and builds an initial file system. The
+
+#define ROOTINO 2 // root i-number
+#define BSIZE 1024 // block size
+#define GET_GROUP_NO(inum, ext2_sb) ((inum - 1) / ext2_sb.s_inodes_per_group)
+#define GET_INODE_INDEX(inum, ext2_sb) ((inum - 1) % ext2_sb.s_inodes_per_group)
+/*
+ * Constants relative to the data blocks
+ */
+#define EXT2_NDIR_BLOCKS 12
+#define EXT2_IND_BLOCK EXT2_NDIR_BLOCKS
+#define EXT2_DIND_BLOCK (EXT2_IND_BLOCK + 1)
+#define EXT2_TIND_BLOCK (EXT2_DIND_BLOCK + 1)
+#define EXT2_N_BLOCKS (EXT2_TIND_BLOCK + 1)
+
+// Block sizes
+#define EXT2_INDIRECT (BSIZE / sizeof(uint))
+#define EXT2_DINDIRECT (BSIZE / sizeof(uint)) * EXT2_INDIRECT
+#define EXT2_TINDIRECT (BSIZE / sizeof(uint)) * EXT2_DINDIRECT
+#define EXT2_MAXFILE (EXT2_NDIR_BLOCKS + EXT2_INDIRECT + EXT2_DINDIRECT + EXT2_TINDIRECT)
+
+// for directory entry
+#define EXT2_NAME_LEN 255
+
 // super block describes the disk layout:
-/*struct superblock {
-  uint32 ninodes;               // Number of inodes
-  uint32 nblocks;               // Number of data blocks
-  uint size;                  // Size of file system image (blocks)
-  uint nlog;                  // Number of log blocks
-  uint logstart;              // Block number of first log block
-  uint inodestart;            // Block number of first inode block
-  uint bmapstart;             // Block number of first free map block
+struct old_superblock
+{
+  uint32 ninodes;  // Number of inodes
+  uint32 nblocks;  // Number of data blocks
+  uint size;       // Size of file system image (blocks)
+  uint nlog;       // Number of log blocks
+  uint logstart;   // Block number of first log block
+  uint inodestart; // Block number of first inode block
+  uint bmapstart;  // Block number of first free map block
   uint reserved[7];
   uint16 magic;
   uint16 state;
   uint reserved_ext[241];
-};*/
+};
 
 struct superblock
 {
@@ -131,8 +152,8 @@ struct dinode
   uint i_file_acl;   // File Access Control List
   uint i_dir_acl;    // Directory Access Control List
   uint i_faddr;      // Fragment address
-  uchar i_osd1[12];  // OS-dependent fields (first part)
-  uchar i_osd2[12];  // OS-dependent fields (second part)
+  uchar i_osd1[4];  // OS-dependent fields (first part)
+
   union
   {
     uint reserved[3]; // Reserved for future use
@@ -161,26 +182,29 @@ struct dinode
 
 struct dirent
 {
-  ushort inum;
-  char name[DIRSIZ];
+  uint inum;      /* Inode number */
+  ushort rec_len; /* Directory entry length */
+  uchar name_len; /* Name length */
+  uchar file_type;
+  char name[EXT2_NAME_LEN]; /* File name */
 };
 
-#define S_IFMT  00170000
+#define S_IFMT 00170000
 #define S_IFSOCK 0140000
-#define S_IFLNK	 0120000
-#define S_IFREG  0100000
-#define S_IFBLK  0060000
-#define S_IFDIR  0040000
-#define S_IFCHR  0020000
-#define S_IFIFO  0010000
-#define S_ISUID  0004000
-#define S_ISGID  0002000
-#define S_ISVTX  0001000
+#define S_IFLNK 0120000
+#define S_IFREG 0100000
+#define S_IFBLK 0060000
+#define S_IFDIR 0040000
+#define S_IFCHR 0020000
+#define S_IFIFO 0010000
+#define S_ISUID 0004000
+#define S_ISGID 0002000
+#define S_ISVTX 0001000
 
-#define S_ISLNK(m)	(((m) & S_IFMT) == S_IFLNK)
-#define S_ISREG(m)	(((m) & S_IFMT) == S_IFREG)
-#define S_ISDIR(m)	(((m) & S_IFMT) == S_IFDIR)
-#define S_ISCHR(m)	(((m) & S_IFMT) == S_IFCHR)
-#define S_ISBLK(m)	(((m) & S_IFMT) == S_IFBLK)
-#define S_ISFIFO(m)	(((m) & S_IFMT) == S_IFIFO)
-#define S_ISSOCK(m)	(((m) & S_IFMT) == S_IFSOCK)
+#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)
+#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)
+#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
+#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)

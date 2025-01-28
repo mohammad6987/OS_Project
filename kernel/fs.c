@@ -28,6 +28,8 @@ struct superblock sb;
 
 struct ext2_group_desc bgd;
 
+struct dinode rootInode;
+
 // Read the super block.
 static void
 readsb(int dev, struct superblock *sb)
@@ -42,7 +44,7 @@ readsb(int dev, struct superblock *sb)
 void readbgd(uint dev, struct ext2_group_desc *bgd)
 {
   struct buf *bp;
-  uint block = 2; // Block group descriptor starts at block 2 in EXT2
+  uint block = 2;
   bp = bread(dev, block);
   memmove(bgd, bp->data, sizeof(struct ext2_group_desc));
   brelse(bp);
@@ -51,10 +53,28 @@ void readbgd(uint dev, struct ext2_group_desc *bgd)
 void writebgd(uint dev, struct ext2_group_desc *bgd)
 {
   struct buf *bp;
-  uint block = 2; // Block group descriptor starts at block 2 for 1024-byte block size
+  uint block = 2;
   bp = bread(dev, block);
   memmove(bp->data, bgd, sizeof(struct ext2_group_desc));
-  // log_write(bp);
+  log_write(bp);
+  brelse(bp);
+}
+
+void readRootInode(uint dev, struct dinode *rootInode)
+{
+  uint inode_num = 2; 
+  uint inode_table_start = bgd.bg_inode_table;  
+  uint inode_offset = (inode_num - 1) * 148; 
+  
+
+  uint inode_block = inode_table_start + inode_offset / BSIZE;
+
+  struct buf *bp = bread(dev, inode_block);
+
+  uint inode_in_block_offset = inode_offset % BSIZE;
+
+  memmove(rootInode, bp->data + inode_in_block_offset, sizeof(struct dinode));
+
   brelse(bp);
 }
 
@@ -63,19 +83,18 @@ void writebgd(uint dev, struct ext2_group_desc *bgd)
 void fsinit(int dev)
 {
   readsb(dev, &sb); // Read the superblock from the device
-  printf("Superblock contents:\n");
+ /* printf("Superblock contents:\n");
   printf("Magic: 0x%x\n", sb.magic);
   printf("File system size (blocks): %u\n", sb.size);
   printf("Number of data blocks: %d\n", sb.nblocks);
   printf("Number of inodes: %d\n", sb.ninodes);
-
   printf("Inode start block: %u\n", sb.inodestart);
-
+*/
   if (sb.magic != FSMAGIC)
     panic("Invalid file system");
 
   readbgd(dev, &bgd);
-
+/*
   printf("Block Group Descriptor contents:\n");
   printf("Block bitmap block: %u\n", bgd.bg_block_bitmap);
   printf("Inode bitmap block: %u\n", bgd.bg_inode_bitmap);
@@ -83,6 +102,38 @@ void fsinit(int dev)
   printf("Free blocks count: %u\n", bgd.bg_free_blocks_count);
   printf("Free inodes count: %u\n", bgd.bg_free_inodes_count);
   printf("Used directories count: %u\n", bgd.bg_used_dirs_count);
+*/
+  readRootInode(dev, &rootInode);
+  printf("inode size : %ld",sizeof(rootInode));
+
+  printf("Root inode contents:\n");
+  printf("Inode type: 0x%x\n", rootInode.type);
+  printf("Owner UID: %u\n", rootInode.i_uid);
+  printf("Size: %u\n", rootInode.size);
+  printf("Access time (i_atime): %u\n", rootInode.i_atime);
+  printf("Creation time (i_ctime): %u\n", rootInode.i_ctime);
+  printf("Modification time (i_mtime): %u\n", rootInode.i_mtime);
+  printf("Deletion time (i_dtime): %u\n", rootInode.i_dtime);
+  printf("Group ID (i_gid): %u\n", rootInode.i_gid);
+  printf("Number of hard links (nlink): %u\n", rootInode.nlink);
+  printf("Number of 512-byte blocks allocated (i_blocks): %u\n", rootInode.i_blocks);
+  printf("File flags (i_flags): %u\n", rootInode.i_flags);
+  
+  printf("Block addresses:\n");
+  for (int i = 0; i < 15; i++) {  // There are 15 block addresses (12 direct, 3 indirect)
+    printf("Address[%d]: %u\n", i, rootInode.addrs[i]);
+  }
+
+  printf("File generation (i_generation): %u\n", rootInode.i_generation);
+  printf("File Access Control List (i_file_acl): %u\n", rootInode.i_file_acl);
+  printf("Directory Access Control List (i_dir_acl): %u\n", rootInode.i_dir_acl);
+  printf("Fragment address (i_faddr): %u\n", rootInode.i_faddr);
+
+ 
+  printf("\n");
+
+  printf("Major device number (major): %u\n", rootInode.major);
+  printf("Minor device number (minor): %u\n", rootInode.minor);
 
   initlog(dev, &sb);
 }
@@ -235,8 +286,6 @@ void iinit()
   {
     initsleeplock(&itable.inode[i].lock, "inode");
   }
-
-
 }
 
 static struct inode *iget(uint dev, uint inum);
@@ -251,7 +300,7 @@ ialloc(uint dev, short type)
   int inum;
   struct buf *bp;
   struct dinode *dip;
-  
+
   for (inum = 1; inum < sb.ninodes; inum++)
   {
     bp = bread(dev, IBLOCK(inum, bgd));
@@ -286,7 +335,7 @@ void iupdate(struct inode *ip)
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
   dip->size = ip->size;
-  printf("inside iupdate , ninide type = %x , major = %x , size = %d", ip->type,ip->major,ip->size);
+  printf("inside iupdate , ninide type = %x , major = %x , size = %d", ip->type, ip->major, ip->size);
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
   log_write(bp);
   brelse(bp);
@@ -315,7 +364,6 @@ iget(uint dev, uint inum)
     if (empty == 0 && ip->ref == 0) // Remember empty slot.
       empty = ip;
   }
-
   // Recycle an inode entry.
   if (empty == 0)
     panic("iget: no inodes");
@@ -340,9 +388,6 @@ idup(struct inode *ip)
   release(&itable.lock);
   return ip;
 }
-
-
-
 // Lock the given inode.
 // Reads the inode from disk if necessary.
 void ilock(struct inode *ip)
@@ -360,17 +405,35 @@ void ilock(struct inode *ip)
     bp = bread(ip->dev, IBLOCK(ip->inum, bgd));
     dip = (struct dinode *)bp->data + ip->inum % IPB;
 
-     if (S_ISDIR(dip->type) || dip->type == T_DIR)
+    // Print all fields of the dip structure
+    printf("Inode fields:\n");
+    printf("  Type: %x\n", dip->type);
+    printf("  Major: %d\n", dip->major);
+    printf("  Minor: %d\n", dip->minor);
+    printf("  Nlink: %d\n", dip->nlink);
+    printf("  Size: %d\n", dip->size);
+    printf("  Block addresses: ");
+    for (int i = 0; i < 14; i++) // Assuming there are 15 addresses in the inode structure
+    {
+      printf("%x ", dip->addrs[i]);
+    }
+    printf("\n");
+
+    // Set inode type based on EXT2 inode type
+    if (S_ISDIR(dip->type) || ip->inum == 2)
       ip->type = T_DIR;
     else
-      ip->type = T_FILE;
+      ip->type = T_FILE; 
+
     ip->major = dip->major;
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
     ip->size = dip->size;
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
+
     brelse(bp);
     ip->valid = 1;
+
     if (ip->type == 0)
       panic("ilock: no type");
   }
@@ -443,40 +506,154 @@ bmap(struct inode *ip, uint bn)
   uint addr, *a;
   struct buf *bp;
 
+  // Handle direct blocks
   if (bn < NDIRECT)
   {
     if ((addr = ip->addrs[bn]) == 0)
     {
-      addr = balloc(ip->dev);
+      addr = balloc(ip->dev); // Allocate a new block if necessary
       if (addr == 0)
-        return 0;
+        return 0; // Out of disk space
       ip->addrs[bn] = addr;
     }
     return addr;
   }
-  bn -= NDIRECT;
 
+  // Handle single indirect block
+  bn -= NDIRECT;
   if (bn < NINDIRECT)
   {
-    // Load indirect block, allocating if necessary.
     if ((addr = ip->addrs[NDIRECT]) == 0)
     {
-      addr = balloc(ip->dev);
+      addr = balloc(ip->dev); // Allocate the indirect block
       if (addr == 0)
-        return 0;
+        return 0; // Out of disk space
       ip->addrs[NDIRECT] = addr;
     }
+
+    // Read the indirect block
     bp = bread(ip->dev, addr);
     a = (uint *)bp->data;
+
+    // Handle allocation of the block within the indirect block
     if ((addr = a[bn]) == 0)
     {
       addr = balloc(ip->dev);
-      if (addr)
+      if (addr == 0)
       {
-        a[bn] = addr;
-        log_write(bp);
+        brelse(bp);
+        return 0; // Out of disk space
       }
+      a[bn] = addr;
+      log_write(bp); // Log the modification to the indirect block
     }
+
+    brelse(bp);
+    return addr;
+  }
+
+  // Handle double indirect block
+  bn -= NINDIRECT;
+  if (bn < NINDIRECT * NINDIRECT)
+  {
+    // First check the double indirect block
+    if ((addr = ip->addrs[NDIRECT + 1]) == 0)
+    {
+      addr = balloc(ip->dev);
+      if (addr == 0)
+        return 0; // Out of disk space
+      ip->addrs[NDIRECT + 1] = addr;
+    }
+
+    // Read the double indirect block
+    bp = bread(ip->dev, addr);
+    a = (uint *)bp->data;
+
+    // Determine the indirect block that corresponds to the requested block
+    uint indirect_block_addr = a[bn / NINDIRECT];
+
+    if (indirect_block_addr == 0)
+    {
+      indirect_block_addr = balloc(ip->dev);
+      if (indirect_block_addr == 0)
+      {
+        brelse(bp);
+        return 0; // Out of disk space
+      }
+      a[bn / NINDIRECT] = indirect_block_addr;
+      log_write(bp);
+    }
+
+    brelse(bp);
+
+    // Read the indirect block and return the address
+    bp = bread(ip->dev, indirect_block_addr);
+    a = (uint *)bp->data;
+    addr = a[bn % NINDIRECT];
+
+    brelse(bp);
+    return addr;
+  }
+
+  // Handle triple indirect block
+  bn -= NINDIRECT * NINDIRECT;
+  if (bn < NINDIRECT * NINDIRECT * NINDIRECT)
+  {
+    if ((addr = ip->addrs[NDIRECT + 2]) == 0)
+    {
+      addr = balloc(ip->dev);
+      if (addr == 0)
+        return 0; // Out of disk space
+      ip->addrs[NDIRECT + 2] = addr;
+    }
+
+    // Read the triple indirect block
+    bp = bread(ip->dev, addr);
+    a = (uint *)bp->data;
+
+    // Find the double indirect block in the triple indirect block
+    uint double_indirect_block_addr = a[bn / (NINDIRECT * NINDIRECT)];
+
+    if (double_indirect_block_addr == 0)
+    {
+      double_indirect_block_addr = balloc(ip->dev);
+      if (double_indirect_block_addr == 0)
+      {
+        brelse(bp);
+        return 0; // Out of disk space
+      }
+      a[bn / (NINDIRECT * NINDIRECT)] = double_indirect_block_addr;
+      log_write(bp);
+    }
+
+    brelse(bp);
+
+    // Read the double indirect block
+    bp = bread(ip->dev, double_indirect_block_addr);
+    a = (uint *)bp->data;
+
+    // Find the indirect block
+    uint indirect_block_addr = a[(bn / NINDIRECT) % NINDIRECT];
+
+    if (indirect_block_addr == 0)
+    {
+      indirect_block_addr = balloc(ip->dev);
+      if (indirect_block_addr == 0)
+      {
+        brelse(bp);
+        return 0; // Out of disk space
+      }
+      a[(bn / NINDIRECT) % NINDIRECT] = indirect_block_addr;
+      log_write(bp);
+    }
+
+    brelse(bp);
+
+    // Read the final indirect block and return the address
+    bp = bread(ip->dev, indirect_block_addr);
+    a = (uint *)bp->data;
+    addr = a[bn % NINDIRECT];
+
     brelse(bp);
     return addr;
   }
@@ -549,6 +726,7 @@ int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
     uint addr = bmap(ip, off / BSIZE);
     if (addr == 0)
       break;
+
     bp = bread(ip->dev, addr);
     m = min(n - tot, BSIZE - off % BSIZE);
     if (either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1)
@@ -618,27 +796,39 @@ int namecmp(const char *s, const char *t)
 struct inode *
 dirlookup(struct inode *dp, char *name, uint *poff)
 {
-  uint off, inum;
+  uint off;
   struct dirent de;
-
+  printf("name0 : %s\n", name);
   if (dp->type != T_DIR)
-    panic("dirlookup not DIR");
-
-  for (off = 0; off < dp->size; off += sizeof(de))
   {
+    printf("name1 : %s\n", name);
+    panic("dirlookup not DIR");
+  }
+  printf("dp->size : %d", dp->size);
+  for (off = 0; off < dp->size; off += de.rec_len)
+  {
+    printf("name2 : %s\n", name);
+
     if (readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+    {
+      printf("name2 : %s\n", name);
       panic("dirlookup read");
+    }
+
     if (de.inum == 0)
       continue;
+
+    printf("name : %s", name);
     if (namecmp(name, de.name) == 0)
     {
       // entry matches path element
       if (poff)
         *poff = off;
-      inum = de.inum;
-      return iget(dp->dev, inum);
+
+      return iget(dp->dev, de.inum);
     }
   }
+  printf("got no enrty\n");
 
   return 0;
 }
@@ -725,7 +915,12 @@ namex(char *path, int nameiparent, char *name)
   struct inode *ip, *next;
 
   if (*path == '/')
-    ip = iget(ROOTDEV, ROOTINO);
+  {
+    printf("reading root\n");
+    ip = iget(1, 2);
+
+    printf("readen root\n");
+  }
   else
     ip = idup(myproc()->cwd);
 
@@ -734,6 +929,7 @@ namex(char *path, int nameiparent, char *name)
     ilock(ip);
     if (ip->type != T_DIR)
     {
+
       iunlockput(ip);
       return 0;
     }
@@ -745,6 +941,8 @@ namex(char *path, int nameiparent, char *name)
     }
     if ((next = dirlookup(ip, name, 0)) == 0)
     {
+
+      printf("name3 : %s\n", name);
       iunlockput(ip);
       return 0;
     }

@@ -31,12 +31,12 @@ int exec(char *path, char **argv)
   struct proc *p = myproc();
 
   begin_op();
-
   if ((ip = namei(path)) == 0)
   {
     end_op();
     return -1;
   }
+  printf("got here 3\n");
   ilock(ip);
 
   // Check ELF header
