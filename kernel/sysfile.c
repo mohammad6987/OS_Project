@@ -58,6 +58,26 @@ fdalloc(struct file *f)
   return -1;
 }
 
+char *
+kernel_strncat(char *dest, const char *src, int n)
+{
+  char *os = dest;
+
+  // Move the pointer to the end of the destination string.
+  while (*dest)
+    dest++;
+
+  // Append up to n characters from src to dest.
+  while (n-- > 0 && (*dest++ = *src++) != 0)
+    ;
+
+  // Null-terminate the result string.
+  *dest = 0;
+
+  return os;
+}
+
+
 uint64
 sys_dup(void)
 {
@@ -199,6 +219,7 @@ sys_unlink(void)
   struct dirent de;
   char name[DIRSIZ], path[MAXPATH];
   uint off;
+  struct dirent entry;
 
   if(argstr(0, path, MAXPATH) < 0)
     return -1;
@@ -211,7 +232,6 @@ sys_unlink(void)
 
   ilock(dp);
 
-  // Cannot unlink "." or "..".
   if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
     goto bad;
 
@@ -221,23 +241,39 @@ sys_unlink(void)
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
+
   if(ip->type == T_DIR && !isdirempty(ip)){
-    iunlockput(ip);
-    goto bad;
+    uint child_off = 0;
+    while(readi(ip, 0,(uint64)&entry, child_off, sizeof(entry)) == sizeof(entry)){
+
+
+      if(entry.inum == 0)  
+        continue;
+
+      char child_path[MAXPATH];
+      safestrcpy(child_path, path, MAXPATH);
+      kernel_strncat(child_path, "/", MAXPATH - strlen(child_path) - 1);
+      kernel_strncat(child_path, entry.name, MAXPATH - strlen(child_path) - 1);
+
+      argstr(0, child_path, MAXPATH);
+      sys_unlink();  
+      child_off += sizeof(entry);
+    }
+
+    dp->nlink--;
+    iupdate(dp);
   }
 
   memset(&de, 0, sizeof(de));
   if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
     panic("unlink: writei");
-  if(ip->type == T_DIR){
-    dp->nlink--;
-    iupdate(dp);
-  }
-  iunlockput(dp);
+
 
   ip->nlink--;
   iupdate(ip);
   iunlockput(ip);
+
+  iunlockput(dp);
 
   end_op();
 
@@ -248,6 +284,7 @@ bad:
   end_op();
   return -1;
 }
+
 
 static struct inode*
 create(char *path, short type, short major, short minor)

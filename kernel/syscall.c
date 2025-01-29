@@ -7,6 +7,7 @@
 #include "syscall.h"
 #include "defs.h"
 #include "limits.h"
+#include "fs.h"
 
 // Fetch the uint64 at addr from the current process.
 int fetchaddr(uint64 addr, uint64 *ip)
@@ -158,6 +159,8 @@ uint64 sys_next_process(void)
   return 1;
 }
 
+
+
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64 (*syscalls[])(void) = {
@@ -186,6 +189,7 @@ static uint64 (*syscalls[])(void) = {
     [SYS_next_process] sys_next_process,
     [SYS_nice] sys_nice,
     [SYS_deadline] sys_deadline,
+
 };
 
 void syscall(void)

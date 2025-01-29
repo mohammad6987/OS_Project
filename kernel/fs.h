@@ -153,10 +153,10 @@ struct dinode
   ushort i_gid;      // Group ID
   ushort nlink;      // Number of hard links
   uint i_blocks;     // Number of 512-byte blocks allocated
+  uint i_flags;      // File flags
   uint addrs[15];    // Block pointers (12 direct, 1 single, 1 double, 1 triple)
   uint i_generation; // File version for NFS
   uint i_file_acl;   // File Access Control List
-  uint i_flags;      // File flags
   uint i_dir_acl;    // Directory Access Control List
   uint i_faddr;      // Fragment address
   uchar i_osd1[4];   // OS-dependent fields (first part)

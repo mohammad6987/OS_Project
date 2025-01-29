@@ -64,7 +64,7 @@ void readRootInode(uint dev, struct dinode *rootInode)
 {
   uint inode_num = 2;
   uint inode_table_start = bgd.bg_inode_table;
-  uint inode_offset = (inode_num - 1) * 148;
+  uint inode_offset = (inode_num - 1) * sizeof(&rootInode);
 
   uint inode_block = inode_table_start + inode_offset / BSIZE;
 
@@ -122,9 +122,8 @@ void fsinit(int dev)
   printf("Block addresses:\n");
   for (int i = 0; i < 15; i++) {  // There are 15 block addresses (12 direct, 3 indirect)
     printf("Address[%d]: %u\n", i, rootInode.addrs[i]);
-  }*/
-
-  
+  }
+*/
 
   initlog(dev, &sb);
 }
@@ -189,8 +188,6 @@ balloc(uint dev, uint inum)
   brelse(bp2);
   panic("ext2_balloc: out of blocks\n");
 }
-
-
 
 // Free a disk block.
 static void
@@ -381,6 +378,18 @@ iget(uint dev, uint inum)
   ip->ref = 1;
   ip->valid = 0;
   release(&itable.lock);
+  printf("Inode fields:\n");
+  printf("  Type: %x\n", ip->type);
+  printf("  Major: %d\n", ip->major);
+  printf("  Minor: %d\n", ip->minor);
+  printf("  Nlink: %d\n", ip->nlink);
+  printf("  Size: %d\n", ip->size);
+  printf("  Block addresses: ");
+  for (int i = 0; i < 14; i++) // Assuming there are 15 addresses in the inode structure
+  {
+    printf("%x ", ip->addrs[i]);
+  }
+  printf("\n");
 
   return ip;
 }
@@ -413,7 +422,7 @@ void ilock(struct inode *ip)
     dip = (struct dinode *)bp->data + ip->inum % IPB;
 
     // Print all fields of the dip structure
-    printf("Inode fields:\n");
+    printf("Dinode fields:\n");
     printf("  Type: %x\n", dip->type);
     printf("  Major: %d\n", dip->major);
     printf("  Minor: %d\n", dip->minor);
@@ -515,26 +524,26 @@ bmap(struct inode *ip, uint bn)
 
   if (bn < NDIRECT)
   {
-    //printf("bn : %d , add[bn] : %d\n", bn, ip->addrs[bn]);
+    // printf("bn : %d , add[bn] : %d\n", bn, ip->addrs[bn]);
     if ((addr = ip->addrs[bn]) == 0)
     {
-      addr = balloc(ip->dev , ip->inum);
+      addr = balloc(ip->dev, ip->inum);
       if (addr == 0)
         return 0;
       ip->addrs[bn] = addr;
     }
-    //printf("Direct block!\n");
+    // printf("Direct block!\n");
     return addr;
   }
   bn -= NDIRECT;
 
   if (bn < NINDIRECT)
   {
-    //printf("indirect block!\n");
-    // Load indirect block, allocating if necessary.
+    // printf("indirect block!\n");
+    //  Load indirect block, allocating if necessary.
     if ((addr = ip->addrs[NDIRECT]) == 0)
     {
-      addr = balloc(ip->dev , ip->inum);
+      addr = balloc(ip->dev, ip->inum);
       if (addr == 0)
         return 0;
       ip->addrs[NDIRECT] = addr;
@@ -543,7 +552,7 @@ bmap(struct inode *ip, uint bn)
     a = (uint *)bp->data;
     if ((addr = a[bn]) == 0)
     {
-      addr = balloc(ip->dev , ip->inum);
+      addr = balloc(ip->dev, ip->inum);
       if (addr)
       {
         a[bn] = addr;
@@ -625,7 +634,7 @@ int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
     bp = bread(ip->dev, addr);
 
     m = min(n - tot, BSIZE - off % BSIZE);
-    //printf("m = %d", m);
+    // printf("m = %d", m);
     if (either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1)
     {
       brelse(bp);
@@ -702,7 +711,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
   {
     panic("dirlookup not DIR");
   }
-  //printf("dp->size : %d\n", dp->size);
+  // printf("dp->size : %d\n", dp->size);
 
   while (off < dp->size)
   {
@@ -736,6 +745,42 @@ dirlookup(struct inode *dp, char *name, uint *poff)
   }
 
   printf("got no entry\n");
+  return 0;
+}
+
+int unlink(struct inode *dp, char *name)
+{
+  uint off;
+  struct inode *ip;
+  struct dirent de;
+
+
+  ip = dirlookup(dp, name, &off);
+  if (ip == 0)
+    return -1; 
+
+
+  if (ip->type == T_DIR)
+    return -1;
+
+
+  ip->nlink--;
+  iupdate(ip);
+
+
+  if (ip->nlink == 0)
+  {
+    itrunc(ip);               // Free file's blocks
+    bfree(ip->dev, ip->inum); // Free the inode itself
+  }
+
+  memset(&de, 0, sizeof(de));
+  memmove(dp->addrs + off, &de, sizeof(de));
+  iupdate(dp);
+
+  iput(dp);
+  iput(ip);
+
   return 0;
 }
 
