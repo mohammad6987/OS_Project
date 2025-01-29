@@ -194,7 +194,7 @@ struct dirent
   ushort rec_len; /* Directory entry length */
   uchar name_len; /* Name length */
   uchar file_type;
-  char name[]; /* File name */
+  char name[EXT2_NAME_LEN]; /* File name */
 };
 
 #define S_IFMT 00170000

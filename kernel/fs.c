@@ -674,6 +674,7 @@ int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
     if (either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1)
     {
       brelse(bp);
+
       tot = -1;
       break;
     }
@@ -752,14 +753,15 @@ dirlookup(struct inode *dp, char *name, uint *poff)
   while (off < dp->size)
   {
 
-    if (readi(dp, 0, (uint64)&de, off, sizeof(&de)) != sizeof(&de))
+    if (readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
     {
       panic("dirlookup read failed");
     }
     printf("de.name : %s , len : %d , inum : %d \n", de.name, de.rec_len, de.inum);
-    if (de.inum == 0)
+    if (de.inum == 0 || de.rec_len == 0)
     {
-      printf("de.name : %s , de.rec_len: %u, de.inum: %u, de.name_len: %u\n", de.name, de.rec_len, de.inum, de.name_len);
+      printf("de.name : %s , de.rec_len: %u, de.inum: %u, de.name_len: %u\n"
+      , de.name, de.rec_len, de.inum, de.name_len);
       off += de.rec_len;
       continue;
     }
@@ -773,25 +775,17 @@ dirlookup(struct inode *dp, char *name, uint *poff)
     {
       if (poff)
         *poff = off;
-      printf("got a match!\n");
+
       return iget(dp->dev, de.inum);
     }
 
     off += de.rec_len;
-    printf("off = %d\n",off);
   }
-  if (strncmp(name, "init", 4) == 0)
-  {
-    printf("got a match!\n");
-    if(poff)
-      *poff = 24;
-    return iget(dp->dev, 2);
-  }
-  else
-  {
+  
+  
     printf("got no entry\n");
     return 0;
-  }
+  
 }
 
 int unlink(struct inode *dp, char *name)
@@ -815,17 +809,13 @@ int unlink(struct inode *dp, char *name)
     itrunc(ip);               // Free file's blocks
     bfree(ip->dev, ip->inum); // Free the inode itself
   }
-
   memset(&de, 0, sizeof(de));
   memmove(dp->addrs + off, &de, sizeof(de));
   iupdate(dp);
-
   iput(dp);
   iput(ip);
-
   return 0;
 }
-
 // Write a new directory entry (name, inum) into the directory dp.
 // Returns 0 on success, -1 on failure (e.g. out of disk blocks).
 int dirlink(struct inode *dp, char *name, uint inum)
@@ -840,7 +830,6 @@ int dirlink(struct inode *dp, char *name, uint inum)
     iput(ip);
     return -1;
   }
-
   // Look for an empty dirent.
   for (off = 0; off < dp->size; off += sizeof(de))
   {
@@ -849,7 +838,6 @@ int dirlink(struct inode *dp, char *name, uint inum)
     if (de.inum == 0)
       break;
   }
-
   strncpy(de.name, name, DIRSIZ);
   de.inum = inum;
   if (writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
@@ -859,7 +847,6 @@ int dirlink(struct inode *dp, char *name, uint inum)
 }
 
 // Paths
-
 // Copy the next path element from path into name.
 // Return a pointer to the element following the copied one.
 // The returned path has no leading slashes,
@@ -898,10 +885,6 @@ skipelem(char *path, char *name)
   return path;
 }
 
-// Look up and return the inode for a path name.
-// If parent != 0, return the inode for the parent and copy the final
-// path element into name, which must have room for DIRSIZ bytes.
-// Must be called inside a transaction since it calls iput().
 static struct inode *
 namex(char *path, int nameiparent, char *name)
 {
@@ -913,7 +896,8 @@ namex(char *path, int nameiparent, char *name)
     ip = iget(1, 2);
   }
   else
-    ip = idup(myproc()->cwd);
+    {printf("also got here!\n");
+      ip = idup(myproc()->cwd);}
 
   while ((path = skipelem(path, name)) != 0)
   {
@@ -927,6 +911,7 @@ namex(char *path, int nameiparent, char *name)
     if (nameiparent && *path == '\0')
     {
       // Stop one level early.
+      printf("stat1 ?");
       iunlock(ip);
       return ip;
     }
@@ -942,6 +927,7 @@ namex(char *path, int nameiparent, char *name)
   }
   if (nameiparent)
   {
+    printf("stat2 ?");
     iput(ip);
     return 0;
   }
