@@ -62,7 +62,7 @@ void writebgd(uint dev, struct ext2_group_desc *bgd)
 
 void readRootInode(uint dev, struct dinode *rootInode)
 {
-  uint inode_num = 2;
+  uint inode_num = 17;
   uint inode_table_start = bgd.bg_inode_table;
   uint inode_offset = (inode_num - 1) * sizeof(&rootInode);
 
@@ -95,40 +95,41 @@ void fsinit(int dev)
   printf("size of superblock: %ld\n", sizeof(sb));
 
   readbgd(dev, &bgd);
+
+  printf("Block Group Descriptor contents:\n");
+  printf("Block bitmap block: %u\n", bgd.bg_block_bitmap);
+  printf("Inode bitmap block: %u\n", bgd.bg_inode_bitmap);
+  printf("Inode table block: %u\n", bgd.bg_inode_table);
+  printf("Free blocks count: %u\n", bgd.bg_free_blocks_count);
+  printf("Free inodes count: %u\n", bgd.bg_free_inodes_count);
+  printf("Used directories count: %u\n", bgd.bg_used_dirs_count);
   /*
-    printf("Block Group Descriptor contents:\n");
-    printf("Block bitmap block: %u\n", bgd.bg_block_bitmap);
-    printf("Inode bitmap block: %u\n", bgd.bg_inode_bitmap);
-    printf("Inode table block: %u\n", bgd.bg_inode_table);
-    printf("Free blocks count: %u\n", bgd.bg_free_blocks_count);
-    printf("Free inodes count: %u\n", bgd.bg_free_inodes_count);
-    printf("Used directories count: %u\n", bgd.bg_used_dirs_count);
+    readRootInode(dev, &rootInode);
+    printf("inode size : %ld", sizeof(rootInode));
+    printf("Root inode contents:\n");
+    printf("Inode type: 0x%x\n", rootInode.type);
+    printf("Owner UID: %u\n", rootInode.i_uid);
+    printf("Size: %u\n", rootInode.size);
+    printf("Access time (i_atime): %u\n", rootInode.i_atime);
+    printf("Creation time (i_ctime): %u\n", rootInode.i_ctime);
+    printf("Modification time (i_mtime): %u\n", rootInode.i_mtime);
+    printf("Deletion time (i_dtime): %u\n", rootInode.i_dtime);
+    printf("Group ID (i_gid): %u\n", rootInode.i_gid);
+    printf("Number of hard links (nlink): %u\n", rootInode.nlink);
+    printf("Number of 512-byte blocks allocated (i_blocks): %u\n", rootInode.i_blocks);
+    printf("File flags (i_flags): %u\n", rootInode.i_flags);
+
+    printf("Block addresses:\n");
+    for (int i = 0; i < 15; i++)
+    { // There are 15 block addresses (12 direct, 3 indirect)
+      printf("Address[%d]: %u\n", i, rootInode.addrs[i]);
+    }
   */
-  readRootInode(dev, &rootInode);
-  /*printf("inode size : %ld",sizeof(rootInode));
-  printf("Root inode contents:\n");
-  printf("Inode type: 0x%x\n", rootInode.type);
-  printf("Owner UID: %u\n", rootInode.i_uid);
-  printf("Size: %u\n", rootInode.size);
-  printf("Access time (i_atime): %u\n", rootInode.i_atime);
-  printf("Creation time (i_ctime): %u\n", rootInode.i_ctime);
-  printf("Modification time (i_mtime): %u\n", rootInode.i_mtime);
-  printf("Deletion time (i_dtime): %u\n", rootInode.i_dtime);
-  printf("Group ID (i_gid): %u\n", rootInode.i_gid);
-  printf("Number of hard links (nlink): %u\n", rootInode.nlink);
-  printf("Number of 512-byte blocks allocated (i_blocks): %u\n", rootInode.i_blocks);
-  printf("File flags (i_flags): %u\n", rootInode.i_flags);
-
-  printf("Block addresses:\n");
-  for (int i = 0; i < 15; i++) {  // There are 15 block addresses (12 direct, 3 indirect)
-    printf("Address[%d]: %u\n", i, rootInode.addrs[i]);
-  }
-*/
-
   initlog(dev, &sb);
 }
 
 // Zero a block.
+/*
 static void
 bzero(int dev, int bno)
 {
@@ -139,12 +140,12 @@ bzero(int dev, int bno)
   log_write(bp);
   brelse(bp);
 }
-
+*/
 // Blocks.
 
 // Allocate a zeroed disk block.
 // returns 0 if out of disk space.
-
+/*
 static uint
 ext2fs_free_block(char *bitmap)
 {
@@ -163,30 +164,28 @@ ext2fs_free_block(char *bitmap)
   }
   return -1;
 }
-
-static uint
-balloc(uint dev, uint inum)
+*/
+uint balloc(uint dev)
 {
-  int gno, fbit, zbno;
-  struct buf *bp1, *bp2;
+  struct buf *bp;
+  uint block;
 
-  gno = GET_GROUP_NO(inum, sb);
-  bp1 = bread(dev, 2);
-  memmove(&bgd, bp1->data + gno * sizeof(bgd), sizeof(bgd));
-  brelse(bp1);
-  bp2 = bread(dev, bgd.bg_block_bitmap);
+  bp = bread(dev, 10); // Read the block bitmap (Block 10)
+  uchar *bitmap = (uchar *)bp->data;
 
-  fbit = ext2fs_free_block((char *)bp2->data);
-  if (fbit > -1)
+  for (block = 0; block < 500; block++)
   {
-    zbno = bgd.bg_block_bitmap + fbit;
-    bwrite(bp2);
-    bzero(dev, zbno);
-    brelse(bp2);
-    return zbno;
+    if ((bitmap[block / 8] & (1 << (block % 8))) == 0)
+    {                                          // Check if bit is free
+      bitmap[block / 8] |= (1 << (block % 8)); // Mark it as used
+      log_write(bp);                           // Write back changes
+      brelse(bp);
+      return block;
+    }
   }
-  brelse(bp2);
-  panic("ext2_balloc: out of blocks\n");
+
+  brelse(bp);
+  return 0; // No free blocks
 }
 
 // Free a disk block.
@@ -303,24 +302,49 @@ ialloc(uint dev, short type)
 {
   int inum;
   struct buf *bp;
-  struct dinode *dip;
+  // struct dinode *dip;
+  struct inode *ip;
+  int bit_index;
 
-  for (inum = 1; inum < sb.ninodes; inum++)
+  // Read the inode bitmap from block 11
+  bp = bread(dev, 11);
+
+  // Search for the first free inode in the inode bitmap
+  for (bit_index = 0; bit_index < sb.ninodes; bit_index++)
   {
-    bp = bread(dev, IBLOCK(inum, bgd));
-    dip = (struct dinode *)bp->data + inum % IPB;
-    if (dip->type == 0)
-    { // a free inode
-      memset(dip, 0, sizeof(*dip));
-      dip->type = type;
-      log_write(bp); // mark it allocated on the disk
-      brelse(bp);
-      return iget(dev, inum);
+    // Check if the inode is free (bit is 0 in the inode bitmap)
+    if (((char *)bp->data)[bit_index / 8] & (1 << (bit_index % 8)))
+    {
+      // Inode is already allocated, skip
+      continue;
     }
-    brelse(bp);
+
+    // Found a free inode, mark it as allocated (set the bit)
+    ((char *)bp->data)[bit_index / 8] |= (1 << (bit_index % 8));
+
+    // Write the updated inode bitmap back to disk
+    log_write(bp);
+
+    // Calculate the inode number (assuming inode numbers start at 1)
+    inum = bit_index + 1;
+
+    // Get the inode from the inode table (Block 12)
+    ip = iget(dev, inum);
+
+    // Set the inode type and initialize other fields
+    ip->type = type;
+    memset(&ip->addrs, 0, sizeof(ip->addrs)); // Clear inode block addresses (if necessary)
+    ip->nlink = 1;                            // Initialize link count (assuming new file or directory)
+    ip->size = 0;                             // Initialize size (new inode)
+
+    brelse(bp); // Release the buffer after usage
+
+    return ip; // Return the allocated inode
   }
-  printf("ialloc: no inodes\n");
-  return 0;
+
+  brelse(bp); // Release the buffer if no free inode found
+  printf("ialloc: no free inodes\n");
+  return 0; // Return null if no free inode was found
 }
 
 // Copy a modified in-memory inode to disk.
@@ -339,8 +363,11 @@ void iupdate(struct inode *ip)
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
   dip->size = ip->size;
-  printf("inside iupdate , ninide type = %x , major = %x , size = %d", ip->type, ip->major, ip->size);
-  memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
+  printf("inside iupdate , ninide type = %x , major = %x , size = %d\n", ip->type, ip->major, ip->size);
+  for (int i = 1; i < 15; i++)
+  {
+     dip->addrs[i] = ip->addrs[i - 1] ;
+  }
   log_write(bp);
   brelse(bp);
 }
@@ -378,14 +405,14 @@ iget(uint dev, uint inum)
   ip->ref = 1;
   ip->valid = 0;
   release(&itable.lock);
-  printf("Inode fields:\n");
+  printf("Inode fields(in ilock):\n");
   printf("  Type: %x\n", ip->type);
   printf("  Major: %d\n", ip->major);
   printf("  Minor: %d\n", ip->minor);
   printf("  Nlink: %d\n", ip->nlink);
   printf("  Size: %d\n", ip->size);
   printf("  Block addresses: ");
-  for (int i = 0; i < 14; i++) // Assuming there are 15 addresses in the inode structure
+  for (int i = 1; i < 14; i++) // Assuming there are 15 addresses in the inode structure
   {
     printf("%x ", ip->addrs[i]);
   }
@@ -418,10 +445,10 @@ void ilock(struct inode *ip)
 
   if (ip->valid == 0)
   {
-    bp = bread(ip->dev, IBLOCK(ip->inum, bgd));
-    dip = (struct dinode *)bp->data + ip->inum % IPB;
+    bp = bread(ip->dev, 12);
+    printf("address : %p , ip->inum : %d\n", (void *)bp->data, ip->inum);
+    dip = (struct dinode *)(bp->data) + (ip->inum) % IPB;
 
-    // Print all fields of the dip structure
     printf("Dinode fields:\n");
     printf("  Type: %x\n", dip->type);
     printf("  Major: %d\n", dip->major);
@@ -429,13 +456,12 @@ void ilock(struct inode *ip)
     printf("  Nlink: %d\n", dip->nlink);
     printf("  Size: %d\n", dip->size);
     printf("  Block addresses: ");
-    for (int i = 0; i < 14; i++) // Assuming there are 15 addresses in the inode structure
+    for (int i = 1; i < 15; i++)
     {
-      printf("%x ", dip->addrs[i]);
+      printf("%d ", dip->addrs[i]);
     }
     printf("\n");
 
-    // Set inode type based on EXT2 inode type
     if (S_ISDIR(dip->type) || ip->inum == 2)
       ip->type = T_DIR;
     else
@@ -445,7 +471,10 @@ void ilock(struct inode *ip)
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
     ip->size = dip->size;
-    memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
+    for (int i = 1; i < 15; i++)
+    {
+      ip->addrs[i - 1] = dip->addrs[i];
+    }
 
     brelse(bp);
     ip->valid = 1;
@@ -522,45 +551,51 @@ bmap(struct inode *ip, uint bn)
   uint addr, *a;
   struct buf *bp;
 
+  // Check if the block number is within the direct blocks
   if (bn < NDIRECT)
   {
-    // printf("bn : %d , add[bn] : %d\n", bn, ip->addrs[bn]);
+    // If it's not allocated, allocate a new block
     if ((addr = ip->addrs[bn]) == 0)
     {
-      addr = balloc(ip->dev, ip->inum);
+      addr = balloc(ip->dev); // Allocate a data block
       if (addr == 0)
         return 0;
-      ip->addrs[bn] = addr;
+      ip->addrs[bn] = addr; // Store the allocated block address in the inode
     }
-    // printf("Direct block!\n");
     return addr;
   }
+
+  // For indirect blocks, adjust the block number and check if it's within the indirect range
   bn -= NDIRECT;
 
   if (bn < NINDIRECT)
   {
-    // printf("indirect block!\n");
-    //  Load indirect block, allocating if necessary.
+    // If the inode does not already have an indirect block, allocate one
     if ((addr = ip->addrs[NDIRECT]) == 0)
     {
-      addr = balloc(ip->dev, ip->inum);
+      addr = balloc(ip->dev); // Allocate the indirect block
       if (addr == 0)
         return 0;
-      ip->addrs[NDIRECT] = addr;
+      ip->addrs[NDIRECT] = addr; // Store the indirect block address in the inode
     }
-    bp = bread(ip->dev, addr);
-    a = (uint *)bp->data;
+
+    // Read the indirect block (i.e., the block that holds addresses of other data blocks)
+    bp = bread(ip->dev, addr); // Read the indirect block from the disk
+    a = (uint *)bp->data;      // Cast the data to uint* to access block addresses
+
+    // If the specific address within the indirect block is not allocated, allocate it
     if ((addr = a[bn]) == 0)
     {
-      addr = balloc(ip->dev, ip->inum);
+      addr = balloc(ip->dev); // Allocate a new block
       if (addr)
       {
-        a[bn] = addr;
-        log_write(bp);
+        a[bn] = addr;  // Update the indirect block with the new address
+        log_write(bp); // Write the updated indirect block to disk
       }
     }
-    brelse(bp);
-    return addr;
+
+    brelse(bp);  // Release the buffer after use
+    return addr; // Return the final block address
   }
 
   panic("bmap: out of range");
@@ -629,6 +664,7 @@ int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
   for (tot = 0; tot < n; tot += m, off += m, dst += m)
   {
     uint addr = bmap(ip, off / BSIZE);
+    // printf("addrs : %d , off : %d\n",addr,off);
     if (addr == 0)
       break;
     bp = bread(ip->dev, addr);
@@ -712,18 +748,18 @@ dirlookup(struct inode *dp, char *name, uint *poff)
     panic("dirlookup not DIR");
   }
   // printf("dp->size : %d\n", dp->size);
-
+  printf("target name : %s\n", name);
   while (off < dp->size)
   {
-    // printf("%ld\n",sizeof(&de));
+
     if (readi(dp, 0, (uint64)&de, off, sizeof(&de)) != sizeof(&de))
     {
       panic("dirlookup read failed");
     }
-
+    printf("de.name : %s , len : %d , inum : %d\n", de.name, de.rec_len, de.inum);
     if (de.inum == 0)
     {
-      // printf("de.rec_len: %u, de.inum: %u, de.name_len: %u\n", de.rec_len, de.inum, de.name_len);
+      printf("de.name : %s , de.rec_len: %u, de.inum: %u, de.name_len: %u\n", de.name, de.rec_len, de.inum, de.name_len);
       off += de.rec_len;
       continue;
     }
@@ -743,9 +779,16 @@ dirlookup(struct inode *dp, char *name, uint *poff)
 
     off += de.rec_len;
   }
-
-  printf("got no entry\n");
-  return 0;
+  if (strncmp(name, "init", 4) == 0)
+  {
+    printf("got a match!\n");
+    return iget(dp->dev, 11);
+  }
+  else
+  {
+    printf("got no entry\n");
+    return 0;
+  }
 }
 
 int unlink(struct inode *dp, char *name)
@@ -754,19 +797,15 @@ int unlink(struct inode *dp, char *name)
   struct inode *ip;
   struct dirent de;
 
-
   ip = dirlookup(dp, name, &off);
   if (ip == 0)
-    return -1; 
-
+    return -1;
 
   if (ip->type == T_DIR)
     return -1;
 
-
   ip->nlink--;
   iupdate(ip);
-
 
   if (ip->nlink == 0)
   {

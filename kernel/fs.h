@@ -9,8 +9,8 @@
 #include "param.h"
 #define ROOTINO 2  // root i-number
 #define BSIZE 1024 // block size
-#define GET_GROUP_NO(inum, ext2_sb) ((inum - 1) / ext2_sb.s_inodes_per_group)
-#define GET_INODE_INDEX(inum, ext2_sb) ((inum - 1) % ext2_sb.s_inodes_per_group)
+#define GET_GROUP_NO(inum, sb) ((inum - 1) / sb.s_inodes_per_group)
+#define GET_INODE_INDEX(inum, sb) ((inum - 1) % sb.s_inodes_per_group)
 /*
  * Constants relative to the data blocks
  */
@@ -37,6 +37,7 @@ struct ext2fs_addrs
 extern struct ext2fs_addrs ext2fs_addrs[NINODE];
 
 // super block describes the disk layout:
+/*
 struct old_superblock
 {
   uint32 ninodes;  // Number of inodes
@@ -51,7 +52,7 @@ struct old_superblock
   uint16 state;
   uint reserved_ext[241];
 };
-
+*/
 struct superblock
 {
   uint ninodes;                  /* Inodes count */
