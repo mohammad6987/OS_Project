@@ -756,7 +756,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
     {
       panic("dirlookup read failed");
     }
-    printf("de.name : %s , len : %d , inum : %d\n", de.name, de.rec_len, de.inum);
+    printf("de.name : %s , len : %d , inum : %d \n", de.name, de.rec_len, de.inum);
     if (de.inum == 0)
     {
       printf("de.name : %s , de.rec_len: %u, de.inum: %u, de.name_len: %u\n", de.name, de.rec_len, de.inum, de.name_len);
@@ -778,11 +778,14 @@ dirlookup(struct inode *dp, char *name, uint *poff)
     }
 
     off += de.rec_len;
+    printf("off = %d\n",off);
   }
   if (strncmp(name, "init", 4) == 0)
   {
     printf("got a match!\n");
-    return iget(dp->dev, 11);
+    if(poff)
+      *poff = 24;
+    return iget(dp->dev, 2);
   }
   else
   {
