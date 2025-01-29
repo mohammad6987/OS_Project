@@ -6,8 +6,8 @@
 //                                          free bit map | data blocks]
 //
 // mkfs computes the super block and builds an initial file system. The
-
-#define ROOTINO 2 // root i-number
+#include "param.h"
+#define ROOTINO 2  // root i-number
 #define BSIZE 1024 // block size
 #define GET_GROUP_NO(inum, ext2_sb) ((inum - 1) / ext2_sb.s_inodes_per_group)
 #define GET_INODE_INDEX(inum, ext2_sb) ((inum - 1) % ext2_sb.s_inodes_per_group)
@@ -28,6 +28,13 @@
 
 // for directory entry
 #define EXT2_NAME_LEN 255
+
+struct ext2fs_addrs
+{
+  uint busy;
+  uint addrs[EXT2_N_BLOCKS];
+};
+extern struct ext2fs_addrs ext2fs_addrs[NINODE];
 
 // super block describes the disk layout:
 struct old_superblock
@@ -146,13 +153,13 @@ struct dinode
   ushort i_gid;      // Group ID
   ushort nlink;      // Number of hard links
   uint i_blocks;     // Number of 512-byte blocks allocated
-  uint i_flags;      // File flags
   uint addrs[15];    // Block pointers (12 direct, 1 single, 1 double, 1 triple)
   uint i_generation; // File version for NFS
   uint i_file_acl;   // File Access Control List
+  uint i_flags;      // File flags
   uint i_dir_acl;    // Directory Access Control List
   uint i_faddr;      // Fragment address
-  uchar i_osd1[4];  // OS-dependent fields (first part)
+  uchar i_osd1[4];   // OS-dependent fields (first part)
 
   union
   {
@@ -186,7 +193,7 @@ struct dirent
   ushort rec_len; /* Directory entry length */
   uchar name_len; /* Name length */
   uchar file_type;
-  char name[EXT2_NAME_LEN]; /* File name */
+  char name[]; /* File name */
 };
 
 #define S_IFMT 00170000
