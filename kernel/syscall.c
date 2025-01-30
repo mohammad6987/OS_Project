@@ -104,6 +104,7 @@ extern uint64 getFreeMem(void); // function to get free memory from kalloc.c
 extern uint64 sys_nice(void);
 extern uint64 sys_deadline(void);
 extern uint64 sys_append(void);
+extern uint64 sys_readdir(void);
 
 uint64 sys_sysinfo(void)
 {
@@ -188,6 +189,7 @@ static uint64 (*syscalls[])(void) = {
     [SYS_next_process] sys_next_process,
     [SYS_nice] sys_nice,
     [SYS_deadline] sys_deadline,
+    [SYS_readdir] sys_readdir,
     
 
 };

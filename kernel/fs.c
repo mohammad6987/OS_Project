@@ -462,10 +462,12 @@ void ilock(struct inode *ip)
   readbgd(ip->dev, &bgd);
   if (ip->valid == 0)
   {
-    block_index = IBLOCK(ip->inum, bgd); // Get the block index for this inode
+    block_index = IBLOCK(ip->inum, bgd);
     inode_index = (ip->inum) % (BSIZE / sizeof(struct dinode));
     bp = bread(ip->dev, block_index);
+
     printf("address : %p , ip->inum : %d ,block index = %d , inode inedex = %d\n", (void *)bp->data, ip->inum, block_index, inode_index);
+
     dip = (struct dinode *)((bp->data) + inode_index * sizeof(struct dinode));
 
     printf("Dinode fields:\n");
@@ -698,6 +700,30 @@ int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
   return tot;
 }
 
+int count_free_blocks(uint dev)
+{
+
+  struct buf *bp;
+
+  int free_blocks = 0;
+
+  readsb(dev, &sb);
+  readbgd(dev, &bgd);
+
+  bp = bread(dev, bgd.bg_block_bitmap);
+  for (int i = 0; i < sb.s_blocks_per_group; i++)
+  {
+    int byte = i / 8;
+    int bit = i % 8;
+    if ((bp->data[byte] & (1 << bit)) == 0)
+    {
+      free_blocks++;
+    }
+  }
+  brelse(bp);
+
+  return free_blocks;
+}
 // Write data to inode.
 // Caller must hold ip->lock.
 // If user_src==1, then src is a user virtual address;
@@ -721,7 +747,7 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
   // Check if there is enough space in the file system for the write operation
   free_blocks = count_free_blocks(ip->dev);
   int required_blocks = (n + BSIZE - 1) / BSIZE;
-  if (free_blocks <= required_blocks)
+  if ((free_blocks - 1) <= required_blocks)
   {
 
     return -1;
@@ -753,31 +779,6 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
   iupdate(ip);
 
   return tot;
-}
-
-int count_free_blocks(uint dev)
-{
-
-  struct buf *bp;
-
-  int free_blocks = 0;
-
-  readsb(dev, &sb);
-  readbgd(dev, &bgd);
-
-  bp = bread(dev, bgd.bg_block_bitmap);
-  for (int i = 0; i < sb.s_blocks_per_group; i++)
-  {
-    int byte = i / 8;
-    int bit = i % 8;
-    if ((bp->data[byte] & (1 << bit)) == 0)
-    {
-      free_blocks++;
-    }
-  }
-  brelse(bp);
-
-  return free_blocks;
 }
 
 // Directories
@@ -933,55 +934,59 @@ skipelem(char *path, char *name)
     path++;
   return path;
 }
-
-static struct inode *
-namex(char *path, int nameiparent, char *name)
+static struct inode *namex(char *path, int nameiparent, char *name)
 {
   struct inode *ip, *next;
 
   if (*path == '/')
   {
-    printf("reading root\n");
-    ip = iget(1, 2);
+    printf("Starting at root inode\n");
+    ip = iget(1, 2); // Get root inode dynamically
   }
   else
   {
-    printf("also got here!\n");
-    ip = idup(myproc()->cwd);
+    printf("Starting from current working directory: %d\n", myproc()->cwd->inum);
+    ip = idup(myproc()->cwd); // Start from current working directory
   }
 
   while ((path = skipelem(path, name)) != 0)
   {
+    printf("Looking for: %s\n", name);
+
     ilock(ip);
     if (ip->type != T_DIR)
     {
-      printf("error in tpye , namex\n");
+      printf("Error: %s is not a directory\n", name);
       iunlockput(ip);
       return 0;
     }
+
     if (nameiparent && *path == '\0')
     {
-      // Stop one level early.
-      printf("stat1 ?");
+
+      printf("Returning parent directory inode\n");
       iunlock(ip);
       return ip;
     }
+
     if ((next = dirlookup(ip, name, 0)) == 0)
     {
-
-      printf("name4 : %s\n", name);
+      printf("Directory or file '%s' not found\n", name);
       iunlockput(ip);
       return 0;
     }
+
     iunlockput(ip);
     ip = next;
   }
+
   if (nameiparent)
   {
-    printf("stat2 ?");
+    printf("Error: Expected parent directory, but reached the last element\n");
     iput(ip);
     return 0;
   }
+
   return ip;
 }
 

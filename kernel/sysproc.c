@@ -8,6 +8,7 @@
 #include "proc.h"
 #include "file.h"
 #include "fs.h"
+#include "stat.h"
 extern int append_to_file(char *path, char *data, int len);
 uint64
 sys_exit(void)
@@ -130,10 +131,39 @@ uint64 sys_append(void)
   int len;
 
   if (argstr(0, path, EXT2_NAME_LEN) < 0 || // Fetch the path
-      argstr(1, data, EXT2_NAME_LEN) < 0 )                  // Fetch the length
+      argstr(1, data, EXT2_NAME_LEN) < 0)   // Fetch the length
   {
     return -1; // Error, invalid arguments
   }
   argint(2, &len);
   return append_to_file(path, data, len);
+}
+
+uint64 sys_readdir(void)
+{
+  char path[EXT2_NAME_LEN];
+  struct inode *dp;
+  struct dirent de;
+
+
+  if (argstr(0, path, EXT2_NAME_LEN) < 0)
+    return -1;
+
+  dp = namei(path);
+  if (dp == 0 || dp->type != T_DIR)
+    return -1;
+
+  ilock(dp);
+
+  int off = 0;
+  while (readi(dp, 0, (uint64)&de, off, sizeof(de)) == sizeof(de))
+  {
+    if (de.inum == 0)
+      continue;
+    printf("%s\n", de.name);
+    off += sizeof(de);
+  }
+
+  iunlock(dp);
+  return 0;
 }

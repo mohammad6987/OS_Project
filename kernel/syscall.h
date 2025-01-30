@@ -25,3 +25,4 @@
 #define SYS_nice 23
 #define SYS_deadline 24
 #define SYS_append 27
+#define SYS_readdir 28
