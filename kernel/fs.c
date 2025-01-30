@@ -710,22 +710,33 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
   uint tot, m;
   struct buf *bp;
   uint addr;
+  int free_blocks;
 
+  // Check for overflow or invalid offset
   if (off > ip->size || off + n < off) // Overflow check
     return -1;
   if (off + n > MAXFILE * BSIZE) // File size exceeds limit
     return -1;
 
+  // Check if there is enough space in the file system for the write operation
+  free_blocks = count_free_blocks(ip->dev);
+  int required_blocks = (n + BSIZE - 1) / BSIZE;
+  if (free_blocks <= required_blocks)
+  {
+
+    return -1;
+  }
+
   for (tot = 0; tot < n; tot += m, off += m, src += m)
   {
-    // Calculate block address
+
     addr = bmap(ip, off / BSIZE);
 
-    if (addr == 0) // Allocation failure or unallocated block
+    if (addr == 0)
       break;
 
     bp = bread(ip->dev, addr);
-    m = min(n - tot, BSIZE - off % BSIZE); // Remaining bytes to write
+    m = min(n - tot, BSIZE - off % BSIZE);
 
     if (either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1)
     {
@@ -742,6 +753,31 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
   iupdate(ip);
 
   return tot;
+}
+
+int count_free_blocks(uint dev)
+{
+
+  struct buf *bp;
+
+  int free_blocks = 0;
+
+  readsb(dev, &sb);
+  readbgd(dev, &bgd);
+
+  bp = bread(dev, bgd.bg_block_bitmap);
+  for (int i = 0; i < sb.s_blocks_per_group; i++)
+  {
+    int byte = i / 8;
+    int bit = i % 8;
+    if ((bp->data[byte] & (1 << bit)) == 0)
+    {
+      free_blocks++;
+    }
+  }
+  brelse(bp);
+
+  return free_blocks;
 }
 
 // Directories
