@@ -2,10 +2,13 @@
 #include "param.h"
 #include "memlayout.h"
 #include "riscv.h"
-#include "spinlock.h"
-#include "proc.h"
+
 #include "defs.h"
 #include "elf.h"
+#include "spinlock.h"
+#include "sleeplock.h" 
+#include "proc.h"
+#include "file.h"
 
 static int loadseg(pde_t *, uint64, struct inode *, uint, uint);
 
@@ -31,24 +34,41 @@ int exec(char *path, char **argv)
   struct proc *p = myproc();
 
   begin_op();
+  printf("path  = %s\n",path);
   if ((ip = namei(path)) == 0)
   {
-    printf("got here 5\n");  
+    printf("got here 5\n");
     end_op();
     return -1;
   }
-  printf("got here 3\n");
-  ilock(ip);
+  
 
+  ilock(ip);
+  printf("Inode details after namei:\n");
+  printf("Inode number: %d\n", ip->inum);
+  printf("Inode type: %d\n", ip->type);
+  printf("Inode size: %d\n", ip->size);
+  printf("Inode device: %d\n", ip->dev);
+  printf("Inode nlink: %d\n", ip->nlink);
+  printf("Inode addrs[0]: %d\n", ip->addrs[2]);
   // Check ELF header
   if (readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
+  {
+    printf("got here 6 + size of elf : %ld\n", sizeof(elf));
     goto bad;
+  }
 
   if (elf.magic != ELF_MAGIC)
+  {
+    printf("got here 7\n");
     goto bad;
+  }
 
   if ((pagetable = proc_pagetable(p)) == 0)
+  {
+    printf("got here 8\n");
     goto bad;
+  }
 
   // Load program into memory.
   for (i = 0, off = elf.phoff; i < elf.phnum; i++, off += sizeof(ph))

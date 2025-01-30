@@ -128,19 +128,10 @@ struct ext2_group_desc
 #define FSMAGIC 0xEF53
 
 #define NDIRECT 12
-#define NINDIRECT (BSIZE / sizeof(uint))
+#define NINDIRECT 1
 #define MAXFILE (NDIRECT + NINDIRECT)
 
 // On-disk inode structure
-/*struct dinode
-{
-  short type;              // File type
-  short major;             // Major device number (T_DEVICE only)
-  short minor;             // Minor device number (T_DEVICE only)
-  short nlink;             // Number of links to inode in file system
-  uint size;               // Size of file (bytes)
-  uint addrs[NDIRECT + 1]; // Data block addresses
-};*/
 
 struct dinode
 {
@@ -171,6 +162,10 @@ struct dinode
       ushort minor; // Minor device number
     };
   };
+
+
+
+
 };
 
 // Inodes per block.
@@ -186,7 +181,7 @@ struct dinode
 #define BBLOCK(b, bgd) ((b) / BPB + (bgd).bg_block_bitmap)
 
 // Directory is a file containing a sequence of dirent structures.
-#define DIRSIZ 14
+#define DIRSIZ 18
 
 struct dirent
 {

@@ -302,13 +302,15 @@ ialloc(uint dev, short type)
 {
   int inum;
   struct buf *bp;
-  // struct dinode *dip;
   struct inode *ip;
+  struct dinode *dip;
   int bit_index;
 
   // Read the inode bitmap from block 11
   bp = bread(dev, 11);
 
+  readsb(dev, &sb);
+  readbgd(dev, &bgd);
   // Search for the first free inode in the inode bitmap
   for (bit_index = 0; bit_index < sb.ninodes; bit_index++)
   {
@@ -331,20 +333,30 @@ ialloc(uint dev, short type)
     // Get the inode from the inode table (Block 12)
     ip = iget(dev, inum);
 
+    // Read the dinode from the inode table (block 12)
+    bp = bread(dev, IBLOCK(ip->inum, bgd));                                 // Read the inode table
+    dip = (struct dinode *)(bp->data) + (inum - 1) * sizeof(struct dinode); // Get the dinode for the inode number
+
     // Set the inode type and initialize other fields
     ip->type = type;
-    memset(&ip->addrs, 0, sizeof(ip->addrs)); // Clear inode block addresses (if necessary)
-    ip->nlink = 1;                            // Initialize link count (assuming new file or directory)
-    ip->size = 0;                             // Initialize size (new inode)
+    ip->nlink = 1; // Initialize link count (assuming new file or directory)
+    ip->size = 0;  // Initialize size (new inode)
+    if (type == T_DIR)
+      ip->nlink = 2;
+
+    // Initialize the addrs array with the block addresses from the dinode
+    for (int i = 1; i < 15; i++)
+    {
+      ip->addrs[i - 1] = dip->addrs[i];
+    }
 
     brelse(bp); // Release the buffer after usage
 
     return ip; // Return the allocated inode
   }
 
-  brelse(bp); // Release the buffer if no free inode found
-  printf("ialloc: no free inodes\n");
-  return 0; // Return null if no free inode was found
+  // If no free inode is found, panic
+  panic("ialloc: no free inodes");
 }
 
 // Copy a modified in-memory inode to disk.
@@ -355,9 +367,13 @@ void iupdate(struct inode *ip)
 {
   struct buf *bp;
   struct dinode *dip;
-
-  bp = bread(ip->dev, IBLOCK(ip->inum, bgd));
-  dip = (struct dinode *)bp->data + ip->inum % IPB;
+  int block_index, inode_index;
+  readsb(ip->dev, &sb);
+  readbgd(ip->dev, &bgd);
+  block_index = IBLOCK(ip->inum, bgd);
+  inode_index = (ip->inum) % (BSIZE / sizeof(struct dinode));
+  bp = bread(ip->dev, block_index);
+  dip = (struct dinode *)((bp->data) + inode_index * sizeof(struct dinode));
   dip->type = ip->type;
   dip->major = ip->major;
   dip->minor = ip->minor;
@@ -366,7 +382,7 @@ void iupdate(struct inode *ip)
   printf("inside iupdate , ninide type = %x , major = %x , size = %d\n", ip->type, ip->major, ip->size);
   for (int i = 1; i < 15; i++)
   {
-     dip->addrs[i] = ip->addrs[i - 1] ;
+    dip->addrs[i] = ip->addrs[i - 1];
   }
   log_write(bp);
   brelse(bp);
@@ -437,17 +453,20 @@ void ilock(struct inode *ip)
 {
   struct buf *bp;
   struct dinode *dip;
-
+  int block_index, inode_index;
   if (ip == 0 || ip->ref < 1)
     panic("ilock");
 
   acquiresleep(&ip->lock);
-
+  readsb(ip->dev, &sb);
+  readbgd(ip->dev, &bgd);
   if (ip->valid == 0)
   {
-    bp = bread(ip->dev, 12);
-    printf("address : %p , ip->inum : %d\n", (void *)bp->data, ip->inum);
-    dip = (struct dinode *)(bp->data) + (ip->inum) % IPB;
+    block_index = IBLOCK(ip->inum, bgd); // Get the block index for this inode
+    inode_index = (ip->inum) % (BSIZE / sizeof(struct dinode));
+    bp = bread(ip->dev, block_index);
+    printf("address : %p , ip->inum : %d ,block index = %d , inode inedex = %d\n", (void *)bp->data, ip->inum, block_index, inode_index);
+    dip = (struct dinode *)((bp->data) + inode_index * sizeof(struct dinode));
 
     printf("Dinode fields:\n");
     printf("  Type: %x\n", dip->type);
@@ -511,16 +530,12 @@ void iput(struct inode *ip)
     // ip->ref == 1 means no other process can have ip locked,
     // so this acquiresleep() won't block (or deadlock).
     acquiresleep(&ip->lock);
-
     release(&itable.lock);
-
     itrunc(ip);
     ip->type = 0;
     iupdate(ip);
     ip->valid = 0;
-
     releasesleep(&ip->lock);
-
     acquire(&itable.lock);
   }
 
@@ -750,6 +765,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
   }
   // printf("dp->size : %d\n", dp->size);
   printf("target name : %s\n", name);
+
   while (off < dp->size)
   {
 
@@ -760,8 +776,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
     printf("de.name : %s , len : %d , inum : %d \n", de.name, de.rec_len, de.inum);
     if (de.inum == 0 || de.rec_len == 0)
     {
-      printf("de.name : %s , de.rec_len: %u, de.inum: %u, de.name_len: %u\n"
-      , de.name, de.rec_len, de.inum, de.name_len);
+      printf("de.name : %s , de.rec_len: %u, de.inum: %u, de.name_len: %u\n", de.name, de.rec_len, de.inum, de.name_len);
       off += de.rec_len;
       continue;
     }
@@ -770,7 +785,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
     {
       panic("dirlookup full entry read failed");
     }
-
+    iget(dp->dev, de.inum);
     if (strncmp(de.name, name, de.name_len) == 0 && strlen(name) == de.name_len)
     {
       if (poff)
@@ -781,11 +796,9 @@ dirlookup(struct inode *dp, char *name, uint *poff)
 
     off += de.rec_len;
   }
-  
-  
-    printf("got no entry\n");
-    return 0;
-  
+
+  printf("got no entry\n");
+  return 0;
 }
 
 int unlink(struct inode *dp, char *name)
@@ -896,8 +909,10 @@ namex(char *path, int nameiparent, char *name)
     ip = iget(1, 2);
   }
   else
-    {printf("also got here!\n");
-      ip = idup(myproc()->cwd);}
+  {
+    printf("also got here!\n");
+    ip = idup(myproc()->cwd);
+  }
 
   while ((path = skipelem(path, name)) != 0)
   {
@@ -945,4 +960,45 @@ struct inode *
 nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
+}
+
+int append_to_file(char *path, char *data, int len)
+{
+  struct inode *ip;
+  int n, off, bn;
+  char buf[BSIZE];
+
+  ip = namei(path);
+  if (ip == 0 || ip->type != T_FILE)
+    return -1;
+
+  ilock(ip);
+
+  off = ip->size;
+
+  while (len > 0)
+  {
+    bn = balloc(ip->dev);
+    if (bn < 0)
+    {
+      iunlock(ip);
+      return -1;
+    }
+    n = (len < BSIZE) ? len : BSIZE;
+    memset(buf, 0, BSIZE);
+    memmove(buf, data, n);
+    if (writei(ip, 0, (uint64)buf, off, n) != n)
+    {
+      iunlock(ip);
+      return -1;
+    }
+    len -= n;
+    data += n;
+    off += n;
+  }
+
+  ip->size += len;
+  iupdate(ip);
+  iunlock(ip);
+  return 0;
 }

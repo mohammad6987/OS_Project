@@ -4,8 +4,11 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
-
+#include "file.h"
+#include "fs.h"
+extern int append_to_file(char *path, char *data, int len);
 uint64
 sys_exit(void)
 {
@@ -114,9 +117,23 @@ uint64
 sys_deadline(void)
 {
   struct proc *p = myproc();
-  uint newDealine =(int)p->trapframe->a0;
-  if(newDealine <= ticks)
+  uint newDealine = (int)p->trapframe->a0;
+  if (newDealine <= ticks)
     return -1;
-  p->ticks = newDealine;  
+  p->ticks = newDealine;
   return 0;
+}
+
+uint64 sys_append(void)
+{
+  char path[EXT2_NAME_LEN], data[EXT2_NAME_LEN];
+  int len;
+
+  if (argstr(0, path, EXT2_NAME_LEN) < 0 || // Fetch the path
+      argstr(1, data, EXT2_NAME_LEN) < 0 )                  // Fetch the length
+  {
+    return -1; // Error, invalid arguments
+  }
+  argint(2, &len);
+  return append_to_file(path, data, len);
 }

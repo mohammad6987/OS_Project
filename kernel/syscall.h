@@ -24,3 +24,4 @@
 #define SYS_next_process 22
 #define SYS_nice 23
 #define SYS_deadline 24
+#define SYS_append 27

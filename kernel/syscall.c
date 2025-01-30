@@ -103,7 +103,7 @@ extern struct proc proc[NPROC]; // list of processes from proc.c
 extern uint64 getFreeMem(void); // function to get free memory from kalloc.c
 extern uint64 sys_nice(void);
 extern uint64 sys_deadline(void);
-
+extern uint64 sys_append(void);
 
 uint64 sys_sysinfo(void)
 {
@@ -159,8 +159,6 @@ uint64 sys_next_process(void)
   return 1;
 }
 
-
-
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64 (*syscalls[])(void) = {
@@ -183,12 +181,14 @@ static uint64 (*syscalls[])(void) = {
     [SYS_mknod] sys_mknod,
     [SYS_unlink] sys_unlink,
     [SYS_link] sys_link,
+    [SYS_append] sys_append,
     [SYS_mkdir] sys_mkdir,
     [SYS_close] sys_close,
     [SYS_sysinfo] sys_sysinfo,
     [SYS_next_process] sys_next_process,
     [SYS_nice] sys_nice,
     [SYS_deadline] sys_deadline,
+    
 
 };
 
